@@ -23,14 +23,16 @@ extern TupleDesc autodiff_record_type(List *args)
     LambdaExpr *lambda = (LambdaExpr *)list_nth(args, 1);
     TupleDesc inDesc = (TupleDesc)list_nth(lambda->argtypes, 0);
     TupleDesc outDesc;
-    outDesc = CreateTemplateTupleDesc(inDesc->natts + 1, false);
+    outDesc = CreateTemplateTupleDesc(inDesc->natts + 2, false);
 
     for (int i = 0; i < inDesc->natts; i++)
     {
         TupleDescCopyEntry(outDesc, (AttrNumber)(i + 1), inDesc, (AttrNumber)(i + 1));
     }
 
-    TupleDescInitEntry(outDesc, (AttrNumber)(outDesc->natts), "label",
+    TupleDescInitEntry(outDesc, (AttrNumber)(outDesc->natts - 1), "f(x)",
+                       lambda->rettype, lambda->rettypmod, 0);
+    TupleDescInitEntry(outDesc, (AttrNumber)(outDesc->natts), "f'(x)",
                        lambda->rettype, lambda->rettypmod, 0);
 
     return outDesc;
@@ -80,20 +82,22 @@ Datum autodiff_internal(PG_FUNCTION_ARGS)
     oldIsNull = (bool *)palloc(inDesc->natts * sizeof(bool));
     oldVal = (Datum *)palloc(outDesc->natts * sizeof(Datum));
 
-    outDesc = CreateTemplateTupleDesc(inDesc->natts + 1, false);
+    outDesc = CreateTemplateTupleDesc(inDesc->natts + 2, false);
 
     for (int i = 0; i < inDesc->natts; i++)
     {
         TupleDescCopyEntry(outDesc, (AttrNumber)(i + 1), inDesc, (AttrNumber)(i + 1));
     }
 
-    TupleDescInitEntry(outDesc, (AttrNumber)(outDesc->natts), "label",
+    TupleDescInitEntry(outDesc, (AttrNumber)(outDesc->natts - 1), "f(x)",
+                       lambda->rettype, lambda->rettypmod, 0);
+    TupleDescInitEntry(outDesc, (AttrNumber)(outDesc->natts), "f'(x)",
                        lambda->rettype, lambda->rettypmod, 0);
 
     replIsNull = (bool *)palloc(outDesc->natts * sizeof(bool));
     replVal = (Datum *)palloc(outDesc->natts * sizeof(Datum));
 
-    replIsNull[outDesc->natts - 1] = false;
+    replIsNull[outDesc->natts - 2] = false;
     //ExprStateEvalFunc evalfunc = castNode(ExprState, lambda->exprstate)->evalfunc;
 
     for (slot = ExecProcNode(planState); !TupIsNull(slot); slot = ExecProcNode(planState))
@@ -122,13 +126,13 @@ Datum autodiff_internal(PG_FUNCTION_ARGS)
         PG_LAMBDA_SETARG(lambda, 0, HeapTupleHeaderGetDatum(hdr));
         Datum result = PG_LAMBDA_EVAL(lambda, 0, &isnull);
 
-        for (int i = 0; i < outDesc->natts - 1; i++)
+        for (int i = 0; i < outDesc->natts - 2; i++)
         {
             replVal[i] = val_ptr[i];
             replIsNull[i] = null_ptr[i];
         }
 
-        replVal[outDesc->natts - 1] = result;
+        replVal[outDesc->natts - 2] = result;
         tuple = heap_form_tuple(outDesc, replVal, replIsNull);
 
         tuplestore_puttuple(tsOut, tuple);
@@ -145,27 +149,12 @@ Datum autodiff_internal(PG_FUNCTION_ARGS)
 
 Datum autodiff(PG_FUNCTION_ARGS)
 {
-    //Without this, a function, that does not aggregate data
-    //into a single value, cannot return info about the set it is returning
     ReturnSetInfo *rsinfo = (ReturnSetInfo *)fcinfo->resultinfo;
-
-    //This seemingly controls what LLVM flags, opt-level
-    //and states to use and also has the lambdas injected into
-    //the execution
-    LLVMJitContext *jitContext = (LLVMJitContext *)(rsinfo->econtext->ecxt_estate->es_jit);
-
-    //fetch the second argument of the call, and make sure, that
-    //it is infact a lambda expression, only casts from base DATUM
-    //to LambdaNode
     LambdaExpr *lambda = PG_GETARG_LAMBDA(1);
 
-    //
     llvm_enter_tmp_context(rsinfo->econtext->ecxt_estate);
-
-    //
     ExecInitLambdaExpr((Node *)lambda, false);
-
-    //
     llvm_leave_tmp_context(rsinfo->econtext->ecxt_estate);
+
     return autodiff_internal(fcinfo);
 }
