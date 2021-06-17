@@ -23,17 +23,37 @@ extern TupleDesc autodiff_record_type(List *args)
     LambdaExpr *lambda = (LambdaExpr *)list_nth(args, 1);
     TupleDesc inDesc = (TupleDesc)list_nth(lambda->argtypes, 0);
     TupleDesc outDesc;
-    outDesc = CreateTemplateTupleDesc(inDesc->natts + 2, false);
+    outDesc = CreateTemplateTupleDesc(inDesc->natts * 2 + 1, false);
 
     for (int i = 0; i < inDesc->natts; i++)
     {
         TupleDescCopyEntry(outDesc, (AttrNumber)(i + 1), inDesc, (AttrNumber)(i + 1));
     }
 
-    TupleDescInitEntry(outDesc, (AttrNumber)(outDesc->natts - 1), "f(x)",
+    char attrNamesMapped[64];
+    strcpy(attrNamesMapped, "f(");
+    for (int i = 0; i < inDesc->natts; i++)
+    {
+        strcat(attrNamesMapped, inDesc->attrs[i].attname.data);
+        if (i < inDesc->natts - 1)
+        {
+            strcat(attrNamesMapped, ",");
+        }
+    }
+    strcat(attrNamesMapped, ")");
+
+    TupleDescInitEntry(outDesc, (AttrNumber)(inDesc->natts + 1), attrNamesMapped,
                        lambda->rettype, lambda->rettypmod, 0);
-    TupleDescInitEntry(outDesc, (AttrNumber)(outDesc->natts), "f'(x)",
-                       lambda->rettype, lambda->rettypmod, 0);
+
+    for (int i = 0; i < inDesc->natts; i++)
+    {
+        char buffer[64];
+        char *column_name = inDesc->attrs[i].attname.data;
+        sprintf(buffer, "f'(%s)", column_name);
+
+        TupleDescInitEntry(outDesc, (AttrNumber)(inDesc->natts + 2 + i), buffer,
+                           lambda->rettype, lambda->rettypmod, 0);
+    }
 
     return outDesc;
 }
@@ -46,7 +66,6 @@ Datum autodiff_internal(PG_FUNCTION_ARGS)
     MemoryContext oldcontext;
     FuncCallContext *funcctx;
     MemoryContext per_query_ctx;
-    int tupleCount;
     TupleDesc outDesc = NULL;
     Datum *replVal;
     Datum *oldVal;
@@ -82,22 +101,42 @@ Datum autodiff_internal(PG_FUNCTION_ARGS)
     oldIsNull = (bool *)palloc(inDesc->natts * sizeof(bool));
     oldVal = (Datum *)palloc(outDesc->natts * sizeof(Datum));
 
-    outDesc = CreateTemplateTupleDesc(inDesc->natts + 2, false);
+    outDesc = CreateTemplateTupleDesc(inDesc->natts * 2 + 1, false);
 
     for (int i = 0; i < inDesc->natts; i++)
     {
         TupleDescCopyEntry(outDesc, (AttrNumber)(i + 1), inDesc, (AttrNumber)(i + 1));
     }
 
-    TupleDescInitEntry(outDesc, (AttrNumber)(outDesc->natts - 1), "f(x)",
+    char attrNamesMapped[64];
+    strcpy(attrNamesMapped, "f(");
+    for (int i = 0; i < inDesc->natts; i++)
+    {
+        strcat(attrNamesMapped, inDesc->attrs[i].attname.data);
+        if (i < inDesc->natts - 1)
+        {
+            strcat(attrNamesMapped, ",");
+        }
+    }
+    strcat(attrNamesMapped, ")");
+
+    TupleDescInitEntry(outDesc, (AttrNumber)(inDesc->natts + 1), attrNamesMapped,
                        lambda->rettype, lambda->rettypmod, 0);
-    TupleDescInitEntry(outDesc, (AttrNumber)(outDesc->natts), "f'(x)",
-                       lambda->rettype, lambda->rettypmod, 0);
+
+    for (int i = 0; i < inDesc->natts; i++)
+    {
+        char buffer[64];
+        char *column_name = inDesc->attrs[i].attname.data;
+        sprintf(buffer, "f'(%s)", column_name);
+
+        TupleDescInitEntry(outDesc, (AttrNumber)(inDesc->natts + 2 + i), buffer,
+                           lambda->rettype, lambda->rettypmod, 0);
+    }
 
     replIsNull = (bool *)palloc(outDesc->natts * sizeof(bool));
     replVal = (Datum *)palloc(outDesc->natts * sizeof(Datum));
 
-    replIsNull[outDesc->natts - 2] = false;
+    replIsNull[inDesc->natts] = false;
     //ExprStateEvalFunc evalfunc = castNode(ExprState, lambda->exprstate)->evalfunc;
 
     for (slot = ExecProcNode(planState); !TupIsNull(slot); slot = ExecProcNode(planState))
@@ -126,13 +165,13 @@ Datum autodiff_internal(PG_FUNCTION_ARGS)
         PG_LAMBDA_SETARG(lambda, 0, HeapTupleHeaderGetDatum(hdr));
         Datum result = PG_LAMBDA_EVAL(lambda, 0, &isnull);
 
-        for (int i = 0; i < outDesc->natts - 2; i++)
+        for (int i = 0; i < inDesc->natts; i++)
         {
             replVal[i] = val_ptr[i];
             replIsNull[i] = null_ptr[i];
         }
 
-        replVal[outDesc->natts - 2] = result;
+        replVal[inDesc->natts] = result;
         tuple = heap_form_tuple(outDesc, replVal, replIsNull);
 
         tuplestore_puttuple(tsOut, tuple);
