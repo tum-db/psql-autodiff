@@ -5,19 +5,28 @@ load 'llvmjit.so';
 
 --drop all tables, to create new and fresh ones
 drop table if exists nums;
+drop table if exists nums_numeric;
 drop table if exists nums_label;
+drop table if exists nums_null;
 drop table if exists points;
 drop table if exists pages;
 
 
 --create new tables and fill them with usable data
 create table nums(x float not null, y float not null, z float not null, a float not null, b float not null, c float not null);
+create table nums_numeric(x numeric not null, y numeric not null);
 create table nums_label(x integer);
+create table nums_null(x float, y float);
 create table points(x float not null, y float not null);
 create table pages(src float not null, dst float not null);
 
-insert into nums select generate_series(1, 100), generate_series(1, 100), generate_series(1, 100), generate_series(1, 100), generate_series(1, 100), generate_series(1, 100);
-insert into nums_label select generate_series(1,10);
+insert into nums select generate_series(2, 2), generate_series(1, 1), generate_series(1, 1), generate_series(1, 1), generate_series(1, 1), generate_series(1, 1);
+insert into nums_numeric select generate_series(2, 2), generate_series(64, 64);
+insert into nums_label select generate_series(1, 10);
+
+insert into nums_null select generate_series(1, 1), generate_series(2, 2);
+insert into nums_null select 1 as x, null as y;
+
 insert into points select generate_series(1, 100), generate_series(101, 200);
 insert into pages select generate_series(0.1, 1), generate_series(0.1, 1);
 
@@ -67,4 +76,6 @@ language C STRICT;
 --select * from pagerank((select * from pages), (lambda(src)(src.src)), (lambda(dst)(dst.dst)), 0.85, 0.00001, 100, 100) limit 10;
 --select * from pagerank_threads((select * from pages), (lambda(src)(src.src)), (lambda(dst)(dst.dst)), 0.85, 0.00001, 100, 100) limit 10;
 
-select * from autodiff((select x, y, z from nums),(lambda(a)((a.y*2 + 5)/(a.x + a.z)))) limit 10;
+select * from autodiff((select x, y, z from nums),(lambda(a)(a.x * a.y))) limit 10;
+--select * from autodiff((select x, y from nums_numeric),(lambda(a)(log(a.x, a.y)))) limit 10;
+--select * from autodiff((select x, y from nums_null), (lambda(a)(a.x + a.y))) limit 10;

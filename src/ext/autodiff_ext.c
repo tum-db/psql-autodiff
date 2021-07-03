@@ -49,7 +49,7 @@ extern TupleDesc autodiff_record_type(List *args)
     {
         char buffer[64];
         char *column_name = inDesc->attrs[i].attname.data;
-        sprintf(buffer, "f'(%s)", column_name);
+        sprintf(buffer, "df/d%s", column_name);
 
         TupleDescInitEntry(outDesc, (AttrNumber)(inDesc->natts + 2 + i), buffer,
                            lambda->rettype, lambda->rettypmod, 0);
@@ -127,17 +127,16 @@ Datum autodiff_internal(PG_FUNCTION_ARGS)
     {
         char buffer[64];
         char *column_name = inDesc->attrs[i].attname.data;
-        sprintf(buffer, "f'(%s)", column_name);
+        sprintf(buffer, "df/d%s", column_name);
 
         TupleDescInitEntry(outDesc, (AttrNumber)(inDesc->natts + 2 + i), buffer,
                            lambda->rettype, lambda->rettypmod, 0);
     }
 
-    replIsNull = (bool *)palloc(outDesc->natts * sizeof(bool));
-    replVal = (Datum *)palloc(outDesc->natts * sizeof(Datum));
+    replIsNull = (bool *)palloc((inDesc->natts * 2 + 1) * sizeof(bool));
+    replVal = (Datum *)palloc((inDesc->natts * 2 + 1) * sizeof(Datum));
 
-    replIsNull[inDesc->natts] = false;
-    //ExprStateEvalFunc evalfunc = castNode(ExprState, lambda->exprstate)->evalfunc;
+    Datum derivatives[inDesc->natts];
 
     for (slot = ExecProcNode(planState); !TupIsNull(slot); slot = ExecProcNode(planState))
     {
@@ -163,7 +162,26 @@ Datum autodiff_internal(PG_FUNCTION_ARGS)
         }
 
         PG_LAMBDA_SETARG(lambda, 0, HeapTupleHeaderGetDatum(hdr));
-        Datum result = PG_LAMBDA_EVAL(lambda, 0, &isnull);
+        Datum result = PG_LAMBDA_DERIVE(lambda, &isnull, derivatives, inDesc->natts);
+
+        //Begin testing
+        const char enumsAsNames[87][30] = {"EEOP_DONE", "EEOP_INNER_FETCHSOME", "EEOP_OUTER_FETCHSOME", "EEOP_SCAN_FETCHSOME", "EEOP_INNER_VAR", "EEOP_OUTER_VAR", "EEOP_SCAN_VAR", "EEOP_INNER_SYSVAR", "EEOP_OUTER_SYSVAR", "EEOP_SCAN_SYSVAR", "EEOP_WHOLEROW", "EEOP_ASSIGN_INNER_VAR", "EEOP_ASSIGN_OUTER_VAR", "EEOP_ASSIGN_SCAN_VAR", "EEOP_ASSIGN_TMP", "EEOP_ASSIGN_TMP_MAKE_RO", "EEOP_CONST", "EEOP_FUNCEXPR", "EEOP_FUNCEXPR_STRICT", "EEOP_FUNCEXPR_FUSAGE", "EEOP_FUNCEXPR_STRICT_FUSAGE", "EEOP_BOOL_AND_STEP_FIRST", "EEOP_BOOL_AND_STEP", "EEOP_BOOL_AND_STEP_LAST", "EEOP_BOOL_OR_STEP_FIRST", "EEOP_BOOL_OR_STEP", "EEOP_BOOL_OR_STEP_LAST", "EEOP_BOOL_NOT_STEP", "EEOP_QUAL", "EEOP_JUMP", "EEOP_JUMP_IF_NULL", "EEOP_JUMP_IF_NOT_NULL", "EEOP_JUMP_IF_NOT_TRUE", "EEOP_NULLTEST_ISNULL", "EEOP_NULLTEST_ISNOTNULL", "EEOP_NULLTEST_ROWISNULL", "EEOP_NULLTEST_ROWISNOTNULL", "EEOP_BOOLTEST_IS_TRUE", "EEOP_BOOLTEST_IS_NOT_TRUE", "EEOP_BOOLTEST_IS_FALSE", "EEOP_BOOLTEST_IS_NOT_FALSE", "EEOP_PARAM_EXEC", "EEOP_PARAM_EXTERN", "EEOP_PARAM_CALLBACK", "EEOP_CASE_TESTVAL", "EEOP_MAKE_READONLY", "EEOP_IOCOERCE", "EEOP_DISTINCT", "EEOP_NOT_DISTINCT", "EEOP_NULLIF", "EEOP_SQLVALUEFUNCTION", "EEOP_CURRENTOFEXPR", "EEOP_NEXTVALUEEXPR", "EEOP_ARRAYEXPR", "EEOP_ARRAYCOERCE", "EEOP_ROW", "EEOP_ROWCOMPARE_STEP", "EEOP_ROWCOMPARE_FINAL", "EEOP_MINMAX", "EEOP_FIELDSELECT", "EEOP_FIELDSTORE_DEFORM", "EEOP_FIELDSTORE_FORM", "EEOP_ARRAYREF_SUBSCRIPT", "EEOP_ARRAYREF_OLD", "EEOP_ARRAYREF_ASSIGN", "EEOP_ARRAYREF_FETCH", "EEOP_DOMAIN_TESTVAL", "EEOP_DOMAIN_NOTNULL", "EEOP_DOMAIN_CHECK", "EEOP_CONVERT_ROWTYPE", "EEOP_SCALARARRAYOP", "EEOP_XMLEXPR", "EEOP_AGGREF", "EEOP_GROUPING_FUNC", "EEOP_WINDOW_FUNC", "EEOP_SUBPLAN", "EEOP_ALTERNATIVE_SUBPLAN", "EEOP_AGG_STRICT_DESERIALIZE", "EEOP_AGG_DESERIALIZE", "EEOP_AGG_STRICT_INPUT_CHECK", "EEOP_AGG_INIT_TRANS", "EEOP_AGG_STRICT_TRANS_CHECK", "EEOP_AGG_PLAIN_TRANS_BYVAL", "EEOP_AGG_PLAIN_TRANS", "EEOP_AGG_ORDERED_TRANS_DATUM", "EEOP_AGG_ORDERED_TRANS_TUPLE", "EEOP_LAST"};
+        ExprState *state = castNode(ExprState, lambda->exprstate);
+        for (int i = 0; i < state->steps_len; i++)
+        {
+            printf("\n%i: %s, %lu", i, enumsAsNames[(long)state->steps[i].opcode], (long)state->steps[i].opcode);
+            if ((long)state->steps[i].opcode != 0) {
+                printf("\t\tThis is the resultValue: ");
+                printf("%f", DatumGetFloat8(*state->steps[i].resvalue));
+            }
+            if ((long)state->steps[i].opcode == 18) //EEOP_FUNEXPR_STRICT
+            {
+                ExprEvalStep evalStep = state->steps[i];
+                printf("\n%u <- OId of FuncExpr", evalStep.d.func.finfo->fn_oid);
+            }
+        }
+        printf("\nEnd of tupel\n\n");
+        //End testing
 
         for (int i = 0; i < inDesc->natts; i++)
         {
@@ -172,6 +190,13 @@ Datum autodiff_internal(PG_FUNCTION_ARGS)
         }
 
         replVal[inDesc->natts] = result;
+        replIsNull[inDesc->natts] = false;
+
+        for(int i = 0; i < inDesc->natts; i++) {
+            replVal[inDesc->natts + 1 + i] = derivatives[i];
+            replIsNull[inDesc->natts + 1 + i] = false;
+        }
+
         tuple = heap_form_tuple(outDesc, replVal, replIsNull);
 
         tuplestore_puttuple(tsOut, tuple);
