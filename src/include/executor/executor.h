@@ -253,6 +253,8 @@ ExecProcNode(PlanState *node)
  */
 extern ExprState *ExecInitExpr(Expr *node, PlanState *parent);
 extern ExprState *ExecInitLambdaExpr(Node *node, bool fastLambda);
+extern Datum ExecDeriveLambdaExpr(LambdaExpr *lambda, bool *isNull, Datum *derivatives, int derivatives_length);
+extern int ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *derivatives);
 extern ExprState *ExecInitExprWithParams(Expr *node, ParamListInfo ext_params);
 extern ExprState *ExecInitQual(List *qual, PlanState *parent);
 extern ExprState *ExecInitCheck(List *qual, PlanState *parent);
