@@ -39,7 +39,6 @@ extern TupleDesc label_record_type(List *args)
 PG_MODULE_MAGIC;
 PG_FUNCTION_INFO_V1_RECTYPE(label, label_record_type);
 PG_FUNCTION_INFO_V1_RECTYPE(label_fast, label_record_type);
-// PG_FUNCTION_INFO_V1(set_inlining_cost);
 
 Datum
     label_internal(PG_FUNCTION_ARGS)
@@ -296,13 +295,6 @@ Datum
 
     return label_internal(fcinfo);
 }
-
-// Datum
-//     set_inlining_cost(PG_FUNCTION_ARGS)
-// {
-//     set_initial_cost(PG_GETARG_INT32(0));
-//     return (Datum)0;
-// }
 
 Datum
     label_fast(PG_FUNCTION_ARGS)
