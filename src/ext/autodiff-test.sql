@@ -20,7 +20,7 @@ create table nums_null(x float, y float);
 create table points(x float not null, y float not null);
 create table pages(src float not null, dst float not null);
 
-insert into nums select generate_series(2, 2), generate_series(1, 1), generate_series(1, 1), generate_series(1, 1), generate_series(1, 1), generate_series(1, 1);
+insert into nums select generate_series(4, 4), generate_series(1, 1), generate_series(1, 1), generate_series(1, 1), generate_series(1, 1), generate_series(1, 1);
 insert into nums_numeric select generate_series(2, 2), generate_series(64, 64);
 insert into nums_label select generate_series(1, 10);
 
@@ -76,6 +76,6 @@ language C STRICT;
 --select * from pagerank((select * from pages), (lambda(src)(src.src)), (lambda(dst)(dst.dst)), 0.85, 0.00001, 100, 100) limit 10;
 --select * from pagerank_threads((select * from pages), (lambda(src)(src.src)), (lambda(dst)(dst.dst)), 0.85, 0.00001, 100, 100) limit 10;
 
-select * from autodiff((select x, y, z from nums),(lambda(a)(a.x * a.y))) limit 10;
+select * from autodiff((select x, y, z from nums),(lambda(a)(sqrt(a.x)))) limit 10;
 --select * from autodiff((select x, y from nums_numeric),(lambda(a)(log(a.x, a.y)))) limit 10;
 --select * from autodiff((select x, y from nums_null), (lambda(a)(a.x + a.y))) limit 10;
