@@ -47,6 +47,7 @@
 #include "utils/datum.h"
 #include "utils/lsyscache.h"
 #include "utils/typcache.h"
+#include <math.h>
 
 typedef struct LastAttnumInfo
 {
@@ -241,7 +242,7 @@ Datum ExecDeriveLambdaExpr(LambdaExpr *lambda, bool *isNull, Datum *derivatives,
 	// ExprState
 	ExprState *state = castNode(ExprState, lambda->exprstate);
 
-	//set all derivatives to zero //TODO: figure out the length of derivatives
+	//set all derivatives to zero
 	for(int i = 0; i < derivatives_length; i++) {
 		derivatives[i] = Float8GetDatum(0);
 	}
@@ -260,42 +261,234 @@ Datum ExecDeriveLambdaExpr(LambdaExpr *lambda, bool *isNull, Datum *derivatives,
  */
 int
 ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *derivatives) {
-	//printf("\nbeginning of DeriveSubtree: fetchIndex: %d  -  seed: %f", fetchIndex, DatumGetFloat8(seed));
+	bool debug_OUT = false;
+	if (debug_OUT) printf("\nbeginning of DeriveSubtree: fetchIndex: %d  -  seed: %f", fetchIndex, DatumGetFloat8(seed));
 	int resultFetchIndex = fetchIndex;
 	switch (state->steps[fetchIndex].opcode) {
-		case 59: /*EEOP_FIELDSELECT //TODO: add ParamExtern somehow*/
+		case 59: /*EEOP_FIELDSELECT*/ //TODO: add ParamExtern somehow
 			{
-				//printf("\nfieldselect");
+				if (debug_OUT)
+					printf("\nfieldselect");
 				int fieldNum = state->steps[fetchIndex].d.fieldselect.fieldnum - 1; 									//figure out which var
 				derivatives[fieldNum] = Float8GetDatum(DatumGetFloat8(derivatives[fieldNum]) + DatumGetFloat8(seed));	//add seed to corresponding derivativeAggregate
 				resultFetchIndex = resultFetchIndex - 2;																//return steps above paramextern
 				break;
 			}
-		case 18: // EEOP_FUNCEXPR
+		case 16: /*EEOP_CONST*/
+			{
+				return fetchIndex - 1;																					//can be skipped, d_const/d_x=0
+				break;
+			}
+		case 18: /*EEOP_FUNCEXPR*/
 			{
 				switch (state->steps[fetchIndex].d.func.finfo->fn_oid)
 				{
 				case 216: /*float8 binary multiplication*/
 					{
-						//printf("\nbinary mult");
+						if (debug_OUT)
+							printf("\nbinary mult");
 						float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
 						float8 y = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[1]);
 
-						//printf("\nbin mult func args - x: %f and y: %f", x, y);
+						if (debug_OUT)
+							printf("\nbin mult func args - x: %f and y: %f", x, y);
 
 						Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * y);
 						Datum newSeedY = Float8GetDatum(DatumGetFloat8(seed) * x);
 
-						//printf("\nbin mult seeds - x: %f and y:%f\n", DatumGetFloat8(newSeedX), DatumGetFloat8(newSeedY));
+						if (debug_OUT)
+							printf("\nbin mult seeds - x: %f and y:%f\n", DatumGetFloat8(newSeedX), DatumGetFloat8(newSeedY));
 
 						int startingPointForY = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedY, derivatives);
 						int stepIndexAfterX = ExecLambdaDeriveSubtree(state, startingPointForY, newSeedX, derivatives);
 						resultFetchIndex = stepIndexAfterX;
 						break;
 					}
+				case 217: /*float8 binary divison*/
+					{
+						if (debug_OUT)
+							printf("\nbinary div");
+						float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+						float8 y = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[1]);
+
+						if (y == 0)
+							ereport(ERROR, (errcode(ERRCODE_DIVISION_BY_ZERO), errmsg("Derive: BINARY DIVISION, division by Zero!")));
+
+						if (debug_OUT)
+							printf("\nbin div func args - x: %f and y: %f", x, y);
+
+						Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) / y);
+						Datum newSeedY = Float8GetDatum((DatumGetFloat8(seed) * x * (-1)) / (y * y));
+
+						if (debug_OUT)
+							printf("\nbin div seeds - x: %f and y:%f\n", DatumGetFloat8(newSeedX), DatumGetFloat8(newSeedY));
+
+						int startingPointForY = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedY, derivatives);
+						int stepIndexAfterX = ExecLambdaDeriveSubtree(state, startingPointForY, newSeedX, derivatives);
+						resultFetchIndex = stepIndexAfterX;
+						break;
+					}
+				case 218: /*float8 binary addition*/
+					{
+						if (debug_OUT)
+							printf("\nbinary add");
+						float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+						float8 y = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[1]);
+
+						if (debug_OUT)
+							printf("\nbin add func args - x: %f and y: %f", x, y);
+
+						Datum newSeedX = seed;
+						Datum newSeedY = seed;
+
+						if (debug_OUT)
+							printf("\nbin add seeds - x: %f and y:%f\n", DatumGetFloat8(newSeedX), DatumGetFloat8(newSeedY));
+
+						int startingPointForY = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedY, derivatives);
+						int stepIndexAfterX = ExecLambdaDeriveSubtree(state, startingPointForY, newSeedX, derivatives);
+						resultFetchIndex = stepIndexAfterX;
+						break;
+					}
+				case 219: /*float8 binary subtraction*/
+					{
+						if (debug_OUT)
+							printf("\nbinary sub");
+						float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+						float8 y = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[1]);
+
+						if (debug_OUT)
+							printf("\nbin sub func args - x: %f and y: %f", x, y);
+
+						Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed));
+						Datum newSeedY = Float8GetDatum(DatumGetFloat8(seed) * (-1));
+
+						if (debug_OUT)
+							printf("\nbin sub seeds - x: %f and y:%f\n", DatumGetFloat8(newSeedX), DatumGetFloat8(newSeedY));
+
+						int startingPointForY = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedY, derivatives);
+						int stepIndexAfterX = ExecLambdaDeriveSubtree(state, startingPointForY, newSeedX, derivatives);
+						resultFetchIndex = stepIndexAfterX;
+						break;
+					}
+				case 1346: /*float8 binary pow x^y*/
+					{
+						if (debug_OUT)
+							printf("\nbinary pow");
+						float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+						float8 y = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[1]);
+
+						if (debug_OUT)
+							printf("\nbin pow func args - x: %f and y: %f", x, y);
+
+						Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * y * (pow(x, y - 1)));
+						Datum newSeedY = Float8GetDatum(DatumGetFloat8(seed) * pow(x, y) * log(x));
+
+						if (debug_OUT)
+							printf("\nbin pow seeds - x: %f and y:%f\n", DatumGetFloat8(newSeedX), DatumGetFloat8(newSeedY));
+
+						int startingPointForY = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedY, derivatives);
+						int stepIndexAfterX = ExecLambdaDeriveSubtree(state, startingPointForY, newSeedX, derivatives);
+						resultFetchIndex = stepIndexAfterX;
+						break;
+					}
+				case 1344: /*float8 unary sqrt*/
+					{
+						if (debug_OUT)
+							printf("\nunary sqrt");
+						float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+
+						if (debug_OUT)
+							printf("\nunary sqrt func arg - x: %f", x);
+
+						Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) / (2 * sqrt(x)));
+
+						if (debug_OUT)
+							printf("\nunary sqrt seed - x: %f\n", DatumGetFloat8(newSeedX));
+
+						int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+						resultFetchIndex = stepsAfterSubtree;
+						break;
+					}
+				case 1395: /*float8 unary abs*/
+					{
+						if (debug_OUT)
+							printf("\nunary abs");
+						float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+
+						if (x == 0)
+							ereport(ERROR, (errcode(ERRCODE_DIVISION_BY_ZERO), errmsg("Derive: ABS, division by Zero!")));
+
+						if (debug_OUT)
+							printf("\nunary abs func arg - x: %f", x);
+
+						Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) / (2 * sqrt(x)));
+
+						if (debug_OUT)
+							printf("\nunary abs seed - x: %f\n", DatumGetFloat8(newSeedX));
+
+						int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+						resultFetchIndex = stepsAfterSubtree;
+						break;
+					}
+				case 1604: /*float8 unary sin*/
+					{
+						if (debug_OUT)
+							printf("\nunary sin");
+						float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+
+						if (debug_OUT)
+							printf("\nunary sin func arg - x: %f", x);
+
+						Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * cos(x));
+
+						if (debug_OUT)
+							printf("\nunary sin seed - x: %f\n", DatumGetFloat8(newSeedX));
+
+						int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+						resultFetchIndex = stepsAfterSubtree;
+						break;
+					}
+				case 1605: /*float8 unary cos*/
+					{
+						if (debug_OUT)
+							printf("\nunary cos");
+						float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+
+						if (debug_OUT)
+							printf("\nunary cos func arg - x: %f", x);
+
+						Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * (-1) * sin(x));
+
+						if (debug_OUT)
+							printf("\nunary cos seed - x: %f\n", DatumGetFloat8(newSeedX));
+
+						int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+						resultFetchIndex = stepsAfterSubtree;
+						break;
+					}
+				case 1347: /*float8 unary exp*/
+					{
+						if (debug_OUT)
+							printf("\nunary exp");
+						float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+
+						if (debug_OUT)
+							printf("\nunary exp func arg - x: %f", x);
+
+						Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * exp(x));
+
+						if (debug_OUT)
+							printf("\nunary exp seed - x: %f\n", DatumGetFloat8(newSeedX));
+
+						int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+						resultFetchIndex = stepsAfterSubtree;
+						break;
+					}
 				default:
 					{
-						//printf("\nsome other operator");
+						if (debug_OUT)
+							printf("\nsome other operator");
+						ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("Derive: current operator not supported, aborting...")));
 						break;
 					}
 				}
@@ -303,7 +496,9 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 			}
 		default:
 			{
-				//printf("\nlikely a const, or something else");
+				if (debug_OUT)
+					printf("\nlikely a const, or something else");
+				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("Derive: current step-opcode not recognized, aborting...")));
 				break;
 			}
 	}
