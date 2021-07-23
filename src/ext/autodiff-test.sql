@@ -1,7 +1,9 @@
 --meta flags, jit needs to be on, load llvm loads some dependencies
 set jit='on';
 load 'llvmjit.so';
-
+set jit_above_cost = 0;             --enforce jit-usage
+set jit_inline_above_cost = 0;      --enforce jit-usage
+set jit_optimize_above_cost = 0;    --enforce jit-usage
 
 --drop all tables, to create new and fresh ones
 drop table if exists nums;
@@ -15,14 +17,14 @@ drop table if exists pages;
 --create new tables and fill them with usable data
 create table nums(x float not null, y float not null, z float not null, a float not null, b float not null, c float not null);
 create table nums_numeric(x numeric not null, y numeric not null);
-create table nums_label(x integer);
+create table nums_label(x float not null, y float not null);
 create table nums_null(x float, y float);
 create table points(x float not null, y float not null);
 create table pages(src float not null, dst float not null);
 
-insert into nums select generate_series(4, 4), generate_series(1, 1), generate_series(1, 1), generate_series(1, 1), generate_series(1, 1), generate_series(1, 1);
+insert into nums select generate_series(2, 2), generate_series(3, 3), generate_series(6, 6), generate_series(1, 1), generate_series(1, 1), generate_series(1, 1);
 insert into nums_numeric select generate_series(2, 2), generate_series(64, 64);
-insert into nums_label select generate_series(1, 10);
+insert into nums_label select generate_series(1, 100000), generate_series(1, 100000);
 
 insert into nums_null select generate_series(1, 1), generate_series(2, 2);
 insert into nums_null select 1 as x, null as y;
@@ -69,13 +71,14 @@ language C STRICT;
 
 
 --test all functions and run them with their corresponding datatables
---select * from label((select x from nums_label),(lambda(a)(a.x))) limit 10;
+--explain analyze select * from label((select x, y from nums_label),(lambda(a)(pow(a.x, 2) * a.y + 5))) limit 10;
 --select * from label_fast((select * from nums),(lambda(a)((a.x + a.y)/2))) limit 10;
 --select * from kmeans((select * from points),(select * from points),(lambda(a,b)(a.x + a.y - (b.x + b.y))), 10, 100) limit 10;
 --select * from kmeans_threads((select * from points),(select * from points),(lambda(a,b)(a.x + a.y - (b.x + b.y))), 10, 100) limit 10;
 --select * from pagerank((select * from pages), (lambda(src)(src.src)), (lambda(dst)(dst.dst)), 0.85, 0.00001, 100, 100) limit 10;
 --select * from pagerank_threads((select * from pages), (lambda(src)(src.src)), (lambda(dst)(dst.dst)), 0.85, 0.00001, 100, 100) limit 10;
 
-select * from autodiff((select x, y, z from nums),(lambda(a)(sqrt(a.x)))) limit 10;
+--select * from autodiff((select x, y, z from nums),(lambda(a)(a.x*a.x + 2 * a.y - a.z))) limit 10;
 --select * from autodiff((select x, y from nums_numeric),(lambda(a)(log(a.x, a.y)))) limit 10;
 --select * from autodiff((select x, y from nums_null), (lambda(a)(a.x + a.y))) limit 10;
+select * from autodiff((select x, y, z from nums),lambda(x)((x.x+x.y)*x.z)); 

@@ -486,8 +486,6 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 					}
 				default:
 					{
-						if (debug_OUT)
-							printf("\nsome other operator");
 						ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("Derive: current operator not supported, aborting...")));
 						break;
 					}
@@ -496,8 +494,6 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 			}
 		default:
 			{
-				if (debug_OUT)
-					printf("\nlikely a const, or something else");
 				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("Derive: current step-opcode not recognized, aborting...")));
 				break;
 			}

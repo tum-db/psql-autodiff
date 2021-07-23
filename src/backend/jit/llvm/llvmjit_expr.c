@@ -3009,7 +3009,7 @@ BuildV1Call(LLVMJitContext *context, LLVMBuilderRef b,
 
 	v_retval = LLVMBuildCall(b, v_fn, &v_fcinfo, 1, "funccall");
 
-	if (v_fcinfo_isnull)
+	if (v_fcinfo_isnull)   
 		*v_fcinfo_isnull = LLVMBuildLoad(b, v_fcinfo_isnullp, "");
 
 	/*
