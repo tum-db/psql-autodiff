@@ -925,7 +925,7 @@ ExecReadyDeriveExpr(ExprState *state)
 	if (jit_compile_expr(state, true))
 		return;
 
-	ExecReadyInterpretedExpr(state);
+	//set derive_func to ExecDeriveLambdaExpr 
 }
 
 /*

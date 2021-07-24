@@ -3133,11 +3133,11 @@ create_LifetimeEnd(LLVMModuleRef mod)
 bool 
 llvm_compile_expr_derive(ExprState *state)
 {
-	return true;
+	return false;
 }
 
 bool 
 llvm_compile_simple_expr_derive(ExprState *state)
 {
-	return true;
+	return false;
 }
