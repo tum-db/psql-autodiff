@@ -128,6 +128,8 @@ _PG_jit_provider_init(JitProviderCallbacks *cb)
 	cb->release_context = llvm_release_context;
 	cb->compile_expr = llvm_compile_expr;
 	cb->compile_simple_expr = llvm_compile_simple_expr;
+	cb->compile_expr_deriv = llvm_compile_expr_derive;
+	cb->compile_simple_expr_deriv = llvm_compile_simple_expr_derive;
 }
 
 /*
