@@ -181,7 +181,7 @@ jit_compile_expr(struct ExprState *state, bool derive)
 		if (!derive) {
 			return provider.compile_expr(state);
 		} else {
-			return provider.compile_expr(state);
+			return provider.compile_expr_deriv(state);
 		}
 	}
 		
@@ -216,11 +216,11 @@ jit_force_compile_expr(struct ExprState *state, bool derive)
 		{
 			if (state->fast_jit)
 			{
-				return provider.compile_simple_expr(state);
+				return provider.compile_simple_expr_deriv(state);
 			}
 			else
 			{
-				return provider.compile_expr(state);
+				return provider.compile_expr_deriv(state);
 			}
 		}
 	}

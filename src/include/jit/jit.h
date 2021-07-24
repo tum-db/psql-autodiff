@@ -68,8 +68,10 @@ typedef void (*JitProviderInit) (JitProviderCallbacks *cb);
 typedef void (*JitProviderResetAfterErrorCB) (void);
 typedef void (*JitProviderReleaseContextCB) (JitContext *context);
 struct ExprState;
-typedef bool (*JitProviderCompileExprCB) (struct ExprState *state);
-typedef bool (*JitProviderCompileSimpleExprCB) (struct ExprState *state);
+typedef bool (*JitProviderCompileExprCB)(struct ExprState *state);
+typedef bool (*JitProviderCompileSimpleExprCB)(struct ExprState *state);
+typedef bool (*JitProviderCompileExprDerivCB)(struct ExprState *state);
+typedef bool (*JitProviderCompileSimpleExprDerivCB)(struct ExprState *state);
 
 struct JitProviderCallbacks
 {
@@ -77,6 +79,8 @@ struct JitProviderCallbacks
 	JitProviderReleaseContextCB release_context;
 	JitProviderCompileExprCB compile_expr;
 	JitProviderCompileSimpleExprCB compile_simple_expr;
+	JitProviderCompileExprDerivCB compile_expr_deriv;
+	JitProviderCompileSimpleExprDerivCB compile_simple_expr_deriv;
 };
 
 
