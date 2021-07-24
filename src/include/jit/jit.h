@@ -102,9 +102,9 @@ extern void jit_release_context(JitContext *context);
  */
 
 
-extern bool jit_compile_expr(struct ExprState *state);
+extern bool jit_compile_expr(struct ExprState *state, bool derive);
 extern bool jit_compile_simple_expression(struct ExprState *state);
-extern bool jit_force_compile_expr(struct ExprState *state);
+extern bool jit_force_compile_expr(struct ExprState *state, bool derive);
 extern void InstrJitAgg(JitInstrumentation *dst, JitInstrumentation *add);
 
 

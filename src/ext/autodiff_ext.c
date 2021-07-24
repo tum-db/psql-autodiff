@@ -217,7 +217,7 @@ Datum autodiff(PG_FUNCTION_ARGS)
     LambdaExpr *lambda = PG_GETARG_LAMBDA(1);
 
     llvm_enter_tmp_context(rsinfo->econtext->ecxt_estate);
-    ExecInitLambdaExpr((Node *)lambda, false);
+    ExecInitLambdaExpr((Node *)lambda, false, true);
     llvm_leave_tmp_context(rsinfo->econtext->ecxt_estate);
 
     return autodiff_internal(fcinfo);

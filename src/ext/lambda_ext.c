@@ -284,7 +284,7 @@ Datum
 
     llvm_enter_tmp_context(rsinfo->econtext->ecxt_estate);
 
-    ExecInitLambdaExpr((Node *)lambda, false);
+    ExecInitLambdaExpr((Node *)lambda, false, false);
 
     llvm_leave_tmp_context(rsinfo->econtext->ecxt_estate);
 
@@ -320,7 +320,7 @@ Datum
     llvm_enter_tmp_context(rsinfo->econtext->ecxt_estate);
     LLVMJitContext *jitContext = (LLVMJitContext *)(rsinfo->econtext->ecxt_estate->es_jit);
 
-    ExecInitLambdaExpr((Node *)lambda, true);
+    ExecInitLambdaExpr((Node *)lambda, true, false);
     Datum (*compiled_func)(Datum **);
     compiled_func = llvm_prepare_simple_expression(castNode(ExprState, lambda->exprstate));
 

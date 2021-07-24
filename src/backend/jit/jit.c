@@ -153,7 +153,7 @@ jit_release_context(JitContext *context)
  * Returns true if successful, false if not.
  */
 bool
-jit_compile_expr(struct ExprState *state)
+jit_compile_expr(struct ExprState *state, bool derive)
 {
 	/*
 	 * We can easily create a one-off context for functions without an
@@ -177,8 +177,14 @@ jit_compile_expr(struct ExprState *state)
 		return false;
 
 	/* this also takes !jit_enabled into account */
-	if (provider_init())
-		return provider.compile_expr(state);
+	if (provider_init()) {
+		if (!derive) {
+			return provider.compile_expr(state);
+		} else {
+			return provider.compile_expr(state);
+		}
+	}
+		
 
 	return false;
 }
@@ -190,20 +196,33 @@ jit_compile_expr(struct ExprState *state)
  * might not be compiled.
  */
 bool
-jit_force_compile_expr(struct ExprState *state)
+jit_force_compile_expr(struct ExprState *state, bool derive)
 {
 	/* this also takes !jit_enabled into account */
-	if (provider_init()) 
-	{
-		if (state->fast_jit)
+	if (!derive) {
+		if (provider_init())
 		{
-			return provider.compile_simple_expr(state);
+			if (state->fast_jit)
+			{
+				return provider.compile_simple_expr(state);
+			}
+			else
+			{
+				return provider.compile_expr(state);
+			}
 		}
-		else
+	} else {
+		if (provider_init())
 		{
-			return provider.compile_expr(state);
+			if (state->fast_jit)
+			{
+				return provider.compile_simple_expr(state);
+			}
+			else
+			{
+				return provider.compile_expr(state);
+			}
 		}
-		
 	}
 
 	return false;

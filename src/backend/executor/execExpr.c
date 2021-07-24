@@ -57,6 +57,7 @@ typedef struct LastAttnumInfo
 } LastAttnumInfo;
 
 static void ExecReadyExpr(ExprState *state);
+static void ExecReadyDeriveExpr(ExprState *state);
 static void ExecInitExprRec(Expr *node, ExprState *state,
 							Datum *resv, bool *resnull);
 static void ExecInitFunc(ExprEvalStep *scratch, Expr *node, List *args,
@@ -151,7 +152,7 @@ ExecInitExpr(Expr *node, PlanState *parent)
  * JIT compilation is used.
  */
 ExprState *
-ExecInitLambdaExpr(Node *node, bool fastLambda)
+ExecInitLambdaExpr(Node *node, bool fastLambda, bool buildDiff)
 {
 	int oldflags;
 	ParamListInfo paramList;
@@ -204,13 +205,23 @@ ExecInitLambdaExpr(Node *node, bool fastLambda)
 	state->parent->state->es_jit_flags |= PGJIT_INLINE;
 	state->parent->state->es_jit_flags |= PGJIT_OPT3;
 
-	if (!jit_force_compile_expr(state))
+	if (!jit_force_compile_expr(state, false))
 	{
 		ereport(WARNING,
 				(errmsg("lambda expression could not be JIT-compiled; please make sure "
 						"LLVM is enabled.")));
 
 		ExecReadyExpr(state);
+	}
+	if (buildDiff) {
+		if (!jit_force_compile_expr(state, true))
+		{
+			ereport(WARNING,
+					(errmsg("lambda expression could not be JIT-compiled; please make sure "
+							"LLVM is enabled.")));
+
+			ExecReadyDeriveExpr(state);
+		}
 	}
 
 	state->parent->state->es_jit_flags = oldflags;
@@ -899,7 +910,19 @@ bool ExecCheck(ExprState *state, ExprContext *econtext)
 static void
 ExecReadyExpr(ExprState *state)
 {
-	if (jit_compile_expr(state))
+	if (jit_compile_expr(state, false))
+		return;
+
+	ExecReadyInterpretedExpr(state);
+}
+
+/*
+ * Prepare a compiled expression for execution.
+ */
+static void
+ExecReadyDeriveExpr(ExprState *state)
+{
+	if (jit_compile_expr(state, true))
 		return;
 
 	ExecReadyInterpretedExpr(state);

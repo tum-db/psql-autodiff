@@ -148,6 +148,8 @@ extern void llvm_inline(LLVMModuleRef mod);
  */
 extern bool llvm_compile_expr(struct ExprState *state);
 extern bool llvm_compile_simple_expr(struct ExprState *state);
+extern bool llvm_compile_expr_derive(struct ExprState *state);
+extern bool llvm_compile_simple_expr_derive(struct ExprState *state);
 extern LLVMValueRef slot_compile_deform(struct LLVMJitContext *context, TupleDesc desc, int natts);
 
 /*

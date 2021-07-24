@@ -3129,3 +3129,15 @@ create_LifetimeEnd(LLVMModuleRef mod)
 
 	return fn;
 }
+
+bool 
+llvm_compile_expr_derive(ExprState *state)
+{
+	return true;
+}
+
+bool 
+llvm_compile_simple_expr_derive(ExprState *state)
+{
+	return true;
+}

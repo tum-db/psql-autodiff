@@ -367,8 +367,8 @@ pagerank(PG_FUNCTION_ARGS)
 
     llvm_enter_tmp_context(rsinfo->econtext->ecxt_estate);
 
-    ExecInitLambdaExpr((Node *) lambdaSrc, false);
-    ExecInitLambdaExpr((Node *) lambdaDst, false);
+    ExecInitLambdaExpr((Node *) lambdaSrc, false, false);
+    ExecInitLambdaExpr((Node *) lambdaDst, false, false);
     jitContext = (LLVMJitContext *) (rsinfo->econtext->ecxt_estate->es_jit);
 
     llvm_leave_tmp_context(rsinfo->econtext->ecxt_estate);
@@ -388,8 +388,8 @@ pagerank_threads(PG_FUNCTION_ARGS)
 
     llvm_enter_tmp_context(rsinfo->econtext->ecxt_estate);
 
-    ExecInitLambdaExpr((Node *) lambdaSrc, false);
-    ExecInitLambdaExpr((Node *) lambdaDst, false);
+    ExecInitLambdaExpr((Node *) lambdaSrc, false, false);
+    ExecInitLambdaExpr((Node *) lambdaDst, false, false);
     jitContext = (LLVMJitContext *) (rsinfo->econtext->ecxt_estate->es_jit);
 
     llvm_leave_tmp_context(rsinfo->econtext->ecxt_estate);

@@ -601,7 +601,7 @@ kmeans(PG_FUNCTION_ARGS)
 
     llvm_enter_tmp_context(rsinfo->econtext->ecxt_estate);
 
-    ExecInitLambdaExpr((Node *) lambda, true);
+    ExecInitLambdaExpr((Node *) lambda, true, false);
     jitContext = (LLVMJitContext *) (rsinfo->econtext->ecxt_estate->es_jit);
 
     Datum (*compiled_func)(FunctionCallInfo);
@@ -635,7 +635,7 @@ kmeans_threads(PG_FUNCTION_ARGS)
 
     llvm_enter_tmp_context(rsinfo->econtext->ecxt_estate);
 
-    ExecInitLambdaExpr((Node *) lambda, true);
+    ExecInitLambdaExpr((Node *) lambda, true, false);
     jitContext = (LLVMJitContext *) (rsinfo->econtext->ecxt_estate->es_jit);
 
     Datum (*compiled_func)(FunctionCallInfo);
