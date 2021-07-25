@@ -245,13 +245,13 @@ ExecInitLambdaExpr(Node *node, bool fastLambda, bool buildDiff)
  * This function serves as a single call the evaluate and derive a single lambda function for a single point, 
  * already loaded into the lambdaFunction's arguments by PG_LAMBDA_SETARG() 
  */
-Datum ExecDeriveLambdaExpr(LambdaExpr *lambda, bool *isNull, Datum *derivatives, int derivatives_length) {
+Datum ExecDeriveLambdaExpr(ExprState *expression, ExprContext *econtext, bool *isNull, Datum *derivatives, int derivatives_length) {
 	//Run the eval func, that was choosen for the execution
 	Datum result;
-	result = (castNode(ExprState, lambda->exprstate)->evalfunc(castNode(ExprState, lambda->exprstate), castNode(ExprContext, lambda->econtext), isNull));
+	result = (expression->evalfunc(expression, econtext, isNull));
 	
 	// ExprState
-	ExprState *state = castNode(ExprState, lambda->exprstate);
+	ExprState *state = expression;
 
 	//set all derivatives to zero
 	for(int i = 0; i < derivatives_length; i++) {
@@ -926,6 +926,7 @@ ExecReadyDeriveExpr(ExprState *state)
 		return;
 
 	//set derive_func to ExecDeriveLambdaExpr 
+	state->derivefunc = (ExprStateDeriveFunc) ExecDeriveLambdaExpr;
 }
 
 /*

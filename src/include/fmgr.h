@@ -265,7 +265,7 @@ extern struct varlena *pg_detoast_datum_packed(struct varlena *datum);
 	castNode(ExprContext, l->econtext), isnull, idx)
 #define PG_SIMPLE_LAMBDA_INJECT(d, idx) ExecEvalSimpleLambdaExpr(d, idx)
 #define PG_LAMBDA_DERIVE(l, isnull, d, d_len) \
-	ExecDeriveLambdaExpr(l, isnull, d, d_len)
+	ExecDeriveLambdaExpr(castNode(ExprState, l->exprstate), castNode(ExprContext, l->econtext), isnull, d, d_len)
 /* these macros hide the pass-by-reference-ness of the datatype: */
 #define PG_GETARG_FLOAT4(n)  DatumGetFloat4(PG_GETARG_DATUM(n))
 #define PG_GETARG_FLOAT8(n)  DatumGetFloat8(PG_GETARG_DATUM(n))
