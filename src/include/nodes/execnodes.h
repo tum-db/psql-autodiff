@@ -52,6 +52,12 @@ typedef Datum (*ExprStateEvalFunc) (struct ExprState *expression,
 
 typedef Datum (*ExprStateSimpleEvalFunc) (Datum **params);
 
+typedef Datum (*ExprStateDeriveFunc)(struct ExprState *expression,
+									 struct ExprContext *econtext,
+									 bool *isNull,
+									 Datum *derivatives,
+									 int derivatives_length);
+
 /* Bits in ExprState->flags (see also execExpr.h for private flag bits): */
 /* expression is for use with ExecQual() */
 #define EEO_FLAG_IS_QUAL					(1 << 0)
@@ -89,12 +95,16 @@ typedef struct ExprState
 	ExprStateEvalFunc evalfunc;
 	ExprStateSimpleEvalFunc evalfunc_simple;
 
+	ExprStateDeriveFunc derivefunc;
+
 	/* original expression tree, for debugging only */
 	Expr	   *expr;
 
 	/* private state for an evalfunc */
 	void	   *evalfunc_private;
 	void	   *evalfunc_simple_private;
+	void	   *derivefunc_private;
+	void 	   *derivefunc_simple_private;
 
 	/*
 	 * XXX: following fields only needed during "compilation" (ExecInitExpr);
