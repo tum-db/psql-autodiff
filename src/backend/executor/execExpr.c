@@ -255,6 +255,7 @@ Datum ExecDeriveLambdaExpr(ExprState *expression, ExprContext *econtext, bool *i
 
 	//reverse through steps to derive each var
 	ExecLambdaDeriveSubtree(state, state->steps_len - 2, Float8GetDatum(1.0), derivatives);
+	printf("Interpreted derivation was used today");
 
 	return result;
 }

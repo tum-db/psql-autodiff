@@ -3159,15 +3159,14 @@ bool llvm_compile_expr_derive(ExprState *state)
 
 	LLVMBuilderRef b;
 	LLVMModuleRef mod;
-	LLVMTypeRef diff_sig;
-	LLVMValueRef diff_fn;
+	LLVMTypeRef eval_sig;
+	LLVMValueRef eval_fn;
 	LLVMBasicBlockRef entry;
 	LLVMBasicBlockRef *opblocks;
 
 	/* state itself */
 	LLVMValueRef v_state;
 	LLVMValueRef v_econtext;
-	LLVMValueRef v_derivatives;
 
 	/* returnvalue */
 	LLVMValueRef v_isnullp;
@@ -3175,6 +3174,8 @@ bool llvm_compile_expr_derive(ExprState *state)
 	/* tmp vars in state */
 	LLVMValueRef v_tmpvaluep;
 	LLVMValueRef v_tmpisnullp;
+
+	LLVMValueRef v_derivatives;
 
 	instr_time starttime;
 	instr_time endtime;
@@ -3211,43 +3212,42 @@ bool llvm_compile_expr_derive(ExprState *state)
 		param_types[0] = l_ptr(StructExprState);   /* state */
 		param_types[1] = l_ptr(StructExprContext); /* econtext */
 		param_types[2] = l_ptr(TypeParamBool);	   /* isnull */
-		param_types[3] = l_ptr(TypeDatum);         /* derivatives */
+		param_types[3] = l_ptr(TypeDatum);		   /* derivatives */
 
-		diff_sig = LLVMFunctionType(TypeSizeT,
+		eval_sig = LLVMFunctionType(TypeSizeT,
 									param_types, lengthof(param_types),
 									false);
 	}
-	diff_fn = LLVMAddFunction(mod, funcname, diff_sig);
-	LLVMSetLinkage(diff_fn, LLVMExternalLinkage);
-	LLVMSetVisibility(diff_fn, LLVMDefaultVisibility);
-	llvm_copy_attributes(AttributeTemplate, diff_fn);
+	eval_fn = LLVMAddFunction(mod, funcname, eval_sig);
+	LLVMSetLinkage(eval_fn, LLVMExternalLinkage);
+	LLVMSetVisibility(eval_fn, LLVMDefaultVisibility);
+	llvm_copy_attributes(AttributeTemplate, eval_fn);
 
-	entry = LLVMAppendBasicBlock(diff_fn, "entry");
+	entry = LLVMAppendBasicBlock(eval_fn, "entry");
 
 	/* build state */
-	v_state = 			LLVMGetParam(diff_fn, 0);
-	v_econtext = 		LLVMGetParam(diff_fn, 1);
-	v_isnullp = 		LLVMGetParam(diff_fn, 2);
-	v_derivatives = 	LLVMGetParam(diff_fn, 3);
+	v_state = LLVMGetParam(eval_fn, 0);
+	v_econtext = LLVMGetParam(eval_fn, 1);
+	v_isnullp = LLVMGetParam(eval_fn, 2);
+	v_derivatives = LLVMGetParam(eval_fn, 3);
 
 	LLVMPositionBuilderAtEnd(b, entry);
 
-	// v_tmpvaluep = LLVMBuildStructGEP(b, v_state,
-	// 								 FIELDNO_EXPRSTATE_RESVALUE,
-	// 								 "v.state.resvalue");
-	// v_tmpisnullp = LLVMBuildStructGEP(b, v_state,
-	// 								  FIELDNO_EXPRSTATE_RESNULL,
-	// 								  "v.state.resnull");
+	v_tmpvaluep = LLVMBuildStructGEP(b, v_state,
+									 FIELDNO_EXPRSTATE_RESVALUE,
+									 "v.state.resvalue");
+	v_tmpisnullp = LLVMBuildStructGEP(b, v_state,
+									  FIELDNO_EXPRSTATE_RESNULL,
+									  "v.state.resnull");
 
 	/* allocate blocks for each op upfront, so we can do jumps easily */
 	opblocks = palloc(sizeof(LLVMBasicBlockRef) * state->steps_len);
 	for (i = 0; i < state->steps_len; i++)
-		opblocks[i] = l_bb_append_v(diff_fn, "b.op.%d.start", i);
+		opblocks[i] = l_bb_append_v(eval_fn, "b.op.%d.start", i);
 
 	/* jump from entry to first block */
 	LLVMBuildBr(b, opblocks[0]);
 
-	/* Builds the evaluation, load results into steps, as intermediate vals */
 	for (i = 0; i < state->steps_len; i++)
 	{
 		ExprEvalStep *op;
@@ -3267,7 +3267,8 @@ bool llvm_compile_expr_derive(ExprState *state)
 		{
 		case EEOP_DONE:
 		{
-			LLVMValueRef v_tmpisnull, v_tmpvalue;
+			LLVMValueRef v_tmpisnull,
+				v_tmpvalue;
 
 			v_tmpvalue = LLVMBuildLoad(b, v_tmpvaluep, "");
 			v_tmpisnull = LLVMBuildLoad(b, v_tmpisnullp, "");
@@ -3276,8 +3277,10 @@ bool llvm_compile_expr_derive(ExprState *state)
 
 			LLVMBuildStore(b, v_tmpisnull, v_isnullp);
 
-			LLVMBuildRet(b, v_tmpvalue);
+			/* before returning we need to build the derivation function */
+			//llvm_compile_expr_deriv_subtree();
 
+			LLVMBuildRet(b, v_tmpvalue);
 			break;
 		}
 		case EEOP_CONST:
@@ -3294,6 +3297,7 @@ bool llvm_compile_expr_derive(ExprState *state)
 			LLVMBuildBr(b, opblocks[i + 1]);
 			break;
 		}
+
 		case EEOP_FUNCEXPR_STRICT:
 		{
 			FunctionCallInfo fcinfo = op->d.func.fcinfo_data;
@@ -3366,10 +3370,8 @@ bool llvm_compile_expr_derive(ExprState *state)
 			}
 
 			LLVMPositionBuilderAtEnd(b, b_nonull);
-		}
-		case EEOP_FUNCEXPR:
-		{
-			FunctionCallInfo fcinfo = op->d.func.fcinfo_data;
+
+			//FunctionCallInfo fcinfo = op->d.func.fcinfo_data;
 			LLVMValueRef v_fcinfo_isnull;
 			LLVMValueRef v_retval;
 
@@ -3383,42 +3385,21 @@ bool llvm_compile_expr_derive(ExprState *state)
 		}
 		case EEOP_PARAM_EXTERN:
 		{
-			if (op->d.param.lambda)
-			{
-				build_EvalXFunc(b, mod, "ExecEvalFastParamExtern",
-								v_state, v_econtext, op);
-			}
-			else
-			{
-				build_EvalXFunc(b, mod, "ExecEvalParamExtern",
-								v_state, v_econtext, op);
-			}
-
+			build_EvalXFunc(b, mod, "ExecEvalFastParamExtern",
+							v_state, v_econtext, op);
 			LLVMBuildBr(b, opblocks[i + 1]);
 			break;
 		}
 		case EEOP_FIELDSELECT:
 		{
-			if (!op->d.fieldselect.lambda)
-			{
-				build_EvalXFunc(b, mod, "ExecEvalFieldSelect",
-								v_state, v_econtext, op);
-			}
-			else
-			{
-				build_EvalXFunc(b, mod, "ExecEvalFastFieldSelect",
-								v_state, v_econtext, op);
-			}
-
+			build_EvalXFunc(b, mod, "ExecEvalFastFieldSelect",
+							v_state, v_econtext, op);
 			LLVMBuildBr(b, opblocks[i + 1]);
 			break;
 		}
 		default:
 		{
 			Assert(false);
-			ereport(ERRCODE_FEATURE_NOT_SUPPORTED,
-					(errmsg("Opcode not supported for derivation, please form "
-							"lambda expression solely from arithmetic operators")));
 			break;
 		}
 		}
@@ -3433,13 +3414,14 @@ bool llvm_compile_expr_derive(ExprState *state)
 	 * remapping overhead.
 	 */
 	{
+
 		CompiledExprState *cstate = palloc0(sizeof(CompiledExprState));
 
 		cstate->context = context;
 		cstate->funcname = funcname;
 
-		state->evalfunc = ExecRunCompiledExprDeriv;
-		state->evalfunc_private = cstate;
+		state->derivefunc = ExecRunCompiledExprDeriv;
+		state->derivefunc_private = cstate;
 	}
 
 	llvm_leave_fatal_on_oom();
@@ -3448,7 +3430,7 @@ bool llvm_compile_expr_derive(ExprState *state)
 	INSTR_TIME_ACCUM_DIFF(context->base.instr.generation_counter,
 						  endtime, starttime);
 
-	return false;
+	return true;
 }
 
 static int
@@ -3475,52 +3457,52 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, ExprState *state,
 		{
 		case 216: /*float8 binary multiplication*/
 		{
-			
+
 			break;
 		}
 		case 217: /*float8 binary divison*/
 		{
-			
+
 			break;
 		}
 		case 218: /*float8 binary addition*/
 		{
-			
+
 			break;
 		}
 		case 219: /*float8 binary subtraction*/
 		{
-			
+
 			break;
 		}
 		case 1346: /*float8 binary pow x^y*/
 		{
-			
+
 			break;
 		}
 		case 1344: /*float8 unary sqrt*/
 		{
-			
+
 			break;
 		}
 		case 1395: /*float8 unary abs*/
 		{
-			
+
 			break;
 		}
 		case 1604: /*float8 unary sin*/
 		{
-			
+
 			break;
 		}
 		case 1605: /*float8 unary cos*/
 		{
-			
+
 			break;
 		}
 		case 1347: /*float8 unary exp*/
 		{
-			
+
 			break;
 		}
 		default:
