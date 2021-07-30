@@ -245,18 +245,13 @@ ExecInitLambdaExpr(Node *node, bool fastLambda, bool buildDiff)
  * This function serves as a single call the evaluate and derive a single lambda function for a single point, 
  * already loaded into the lambdaFunction's arguments by PG_LAMBDA_SETARG() 
  */
-Datum ExecDeriveLambdaExpr(ExprState *expression, ExprContext *econtext, bool *isNull, Datum *derivatives, int derivatives_length) {
+Datum ExecDeriveLambdaExpr(ExprState *expression, ExprContext *econtext, bool *isNull, Datum *derivatives) {
 	//Run the eval func, that was choosen for the execution
 	Datum result;
 	result = (expression->evalfunc(expression, econtext, isNull));
 	
 	// ExprState
 	ExprState *state = expression;
-
-	//set all derivatives to zero
-	for(int i = 0; i < derivatives_length; i++) {
-		derivatives[i] = Float8GetDatum(0);
-	}
 
 	//reverse through steps to derive each var
 	ExecLambdaDeriveSubtree(state, state->steps_len - 2, Float8GetDatum(1.0), derivatives);
@@ -283,7 +278,7 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 			}
 		case 16: /*EEOP_CONST*/
 			{
-				return fetchIndex - 1;																					//can be skipped, d_const/d_x=0
+				resultFetchIndex = resultFetchIndex - 1;																//can be skipped, d_const/d_x=0
 				break;
 			}
 		case 18: /*EEOP_FUNCEXPR*/
@@ -943,10 +938,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 {
 	ExprEvalStep scratch = {0};
 
-	//Clemens start
-	bool print_DEBUG_Clemens = false;
-	//Clemens end
-
 	/* Guard against stack overflow due to overly complex expressions */
 	check_stack_depth();
 
@@ -960,10 +951,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 	{
 	case T_Var:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_Var\n");
-		//Clemens end
 		Var *variable = (Var *)node;
 
 		if (variable->varattno == InvalidAttrNumber)
@@ -1020,10 +1007,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_Const:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_Const\n");
-		//Clemens end
 		Const *con = (Const *)node;
 
 		scratch.opcode = EEOP_CONST;
@@ -1036,10 +1019,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_LambdaExpr:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_Lambda\n");
-		//Clemens end
 		LambdaExpr *expr = (LambdaExpr *)node;
 
 		/*
@@ -1059,10 +1038,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_Param:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_Param\n");
-		//Clemens end
 		Param *param = (Param *)node;
 		ParamListInfo params;
 
@@ -1113,10 +1088,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_Aggref:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_Aggref\n");
-		//Clemens end
 		Aggref *aggref = (Aggref *)node;
 		AggrefExprState *astate = makeNode(AggrefExprState);
 
@@ -1143,10 +1114,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_GroupingFunc:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_GroupingFunc\n");
-		//Clemens end
 		GroupingFunc *grp_node = (GroupingFunc *)node;
 		Agg *agg;
 
@@ -1170,10 +1137,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_WindowFunc:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_WindowFunc\n");
-		//Clemens end
 		WindowFunc *wfunc = (WindowFunc *)node;
 		WindowFuncExprState *wfstate = makeNode(WindowFuncExprState);
 
@@ -1220,10 +1183,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_ArrayRef:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_ArrayRef\n");
-		//Clemens end
 		ArrayRef *aref = (ArrayRef *)node;
 
 		ExecInitArrayRef(&scratch, aref, state, resv, resnull);
@@ -1232,10 +1191,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_FuncExpr:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_FuncExpr\n");
-		//Clemens end
 		FuncExpr *func = (FuncExpr *)node;
 
 		ExecInitFunc(&scratch, node,
@@ -1247,10 +1202,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_OpExpr:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_OpExpr\n");
-		//Clemens end
 		OpExpr *op = (OpExpr *)node;
 
 		ExecInitFunc(&scratch, node,
@@ -1262,10 +1213,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_DistinctExpr:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_DistinctExpr\n");
-		//Clemens end
 		DistinctExpr *op = (DistinctExpr *)node;
 
 		ExecInitFunc(&scratch, node,
@@ -1288,10 +1235,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_NullIfExpr:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_NullIfExpr\n");
-		//Clemens end
 		NullIfExpr *op = (NullIfExpr *)node;
 
 		ExecInitFunc(&scratch, node,
@@ -1314,10 +1257,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_ScalarArrayOpExpr:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_ScalarArrayOpExpr\n");
-		//Clemens end
 		ScalarArrayOpExpr *opexpr = (ScalarArrayOpExpr *)node;
 		Expr *scalararg;
 		Expr *arrayarg;
@@ -1371,10 +1310,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_BoolExpr:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_BoolExpr\n");
-		//Clemens end
 		BoolExpr *boolexpr = (BoolExpr *)node;
 		int nargs = list_length(boolexpr->args);
 		List *adjust_jumps = NIL;
@@ -1461,10 +1396,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_SubPlan:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_Subplan\n");
-		//Clemens end
 		SubPlan *subplan = (SubPlan *)node;
 		SubPlanState *sstate;
 
@@ -1486,10 +1417,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_AlternativeSubPlan:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_AlternativeSubPLan\n");
-		//Clemens ends
 		AlternativeSubPlan *asplan = (AlternativeSubPlan *)node;
 		AlternativeSubPlanState *asstate;
 
@@ -1507,10 +1434,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_FieldSelect:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_FieldSelect\n");
-		//Clemens end
 		FieldSelect *fselect = (FieldSelect *)node;
 
 		/* evaluate row/record argument into result area */
@@ -1529,10 +1452,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_FieldStore:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_FieldStore\n");
-		//Clemens end
 		FieldStore *fstore = (FieldStore *)node;
 		TupleDesc tupDesc;
 		TupleDesc *descp;
@@ -1628,10 +1547,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_RelabelType:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_RelabelType\n");
-		//Clemens end
 		/* relabel doesn't need to do anything at runtime */
 		RelabelType *relabel = (RelabelType *)node;
 
@@ -1641,10 +1556,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_CoerceViaIO:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_CoerceViaIO\n");
-		//Clemens end
 		CoerceViaIO *iocoerce = (CoerceViaIO *)node;
 		Oid iofunc;
 		bool typisvarlena;
@@ -1704,10 +1615,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_ArrayCoerceExpr:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_ArrayCoerceExpr\n");
-		//Clemens end
 		ArrayCoerceExpr *acoerce = (ArrayCoerceExpr *)node;
 		Oid resultelemtype;
 		ExprState *elemstate;
@@ -1775,10 +1682,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_ConvertRowtypeExpr:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_ConvertRowTypeExpr\n");
-		//Clemens end
 		ConvertRowtypeExpr *convert = (ConvertRowtypeExpr *)node;
 
 		/* evaluate argument into step's result area */
@@ -1799,10 +1702,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 		/* note that CaseWhen expressions are handled within this block */
 	case T_CaseExpr:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_CaseExpr\n");
-		//Clemens end
 		CaseExpr *caseExpr = (CaseExpr *)node;
 		List *adjust_jumps = NIL;
 		Datum *caseval = NULL;
@@ -1929,10 +1828,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_CaseTestExpr:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_CaseTestExpr\n");
-		//Clemens end
 		/*
 				 * Read from location identified by innermost_caseval.  Note
 				 * that innermost_caseval could be NULL, if this node isn't
@@ -1952,10 +1847,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_ArrayExpr:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_ArrayExpr\n");
-		//Clemens end
 		ArrayExpr *arrayexpr = (ArrayExpr *)node;
 		int nelems = list_length(arrayexpr->elements);
 		ListCell *lc;
@@ -2002,10 +1893,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_RowExpr:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_RowExpr\n");
-		//Clemens end
 		RowExpr *rowexpr = (RowExpr *)node;
 		int nelems = list_length(rowexpr->args);
 		TupleDesc tupdesc;
@@ -2100,10 +1987,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_RowCompareExpr:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_RowCompareExpr\n");
-		//Clemens end
 		RowCompareExpr *rcexpr = (RowCompareExpr *)node;
 		int nopers = list_length(rcexpr->opnos);
 		List *adjust_jumps = NIL;
@@ -2235,10 +2118,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_CoalesceExpr:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_CoalesceExpr\n");
-		//Clemens end
 		CoalesceExpr *coalesce = (CoalesceExpr *)node;
 		List *adjust_jumps = NIL;
 		ListCell *lc;
@@ -2287,10 +2166,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_MinMaxExpr:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_MinMaxExpr\n");
-		//Clemens end
 		MinMaxExpr *minmaxexpr = (MinMaxExpr *)node;
 		int nelems = list_length(minmaxexpr->args);
 		TypeCacheEntry *typentry;
@@ -2354,10 +2229,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_SQLValueFunction:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_SQLVALUEFunc\n");
-		//Clemens end
 		SQLValueFunction *svf = (SQLValueFunction *)node;
 
 		scratch.opcode = EEOP_SQLVALUEFUNCTION;
@@ -2369,10 +2240,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_XmlExpr:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_XMLExpr\n");
-		//Clemens end
 		XmlExpr *xexpr = (XmlExpr *)node;
 		int nnamed = list_length(xexpr->named_args);
 		int nargs = list_length(xexpr->args);
@@ -2439,10 +2306,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_NullTest:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_NullTest\n");
-		//Clemens end
 		NullTest *ntest = (NullTest *)node;
 
 		if (ntest->nulltesttype == IS_NULL)
@@ -2478,10 +2341,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_BooleanTest:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_BooleanTest\n");
-		//Clemens end
 		BooleanTest *btest = (BooleanTest *)node;
 
 		/*
@@ -2553,10 +2412,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_CurrentOfExpr:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_CurrentOfExpr\n");
-		//Clemens end
 		scratch.opcode = EEOP_CURRENTOFEXPR;
 		ExprEvalPushStep(state, &scratch);
 		break;
@@ -2564,10 +2419,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 	case T_NextValueExpr:
 	{
-		//Clemens start
-		if (print_DEBUG_Clemens)
-			printf("T_NextValueExpr\n");
-		//Clemens end
 		NextValueExpr *nve = (NextValueExpr *)node;
 
 		scratch.opcode = EEOP_NEXTVALUEEXPR;

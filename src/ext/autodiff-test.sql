@@ -1,9 +1,9 @@
 --meta flags, jit needs to be on, load llvm loads some dependencies
 set jit='on';
 load 'llvmjit.so';
-set jit_above_cost = 0;             --enforce jit-usage
-set jit_inline_above_cost = 0;      --enforce jit-usage
-set jit_optimize_above_cost = 0;    --enforce jit-usage
+--set jit_above_cost = 0;             --enforce jit-usage
+--set jit_inline_above_cost = 0;      --enforce jit-usage
+--set jit_optimize_above_cost = 0;    --enforce jit-usage
 
 --drop all tables, to create new and fresh ones
 drop table if exists nums;
@@ -24,7 +24,7 @@ create table pages(src float not null, dst float not null);
 
 insert into nums select generate_series(2, 2), generate_series(3, 3), generate_series(6, 6), generate_series(1, 1), generate_series(1, 1), generate_series(1, 1);
 insert into nums_numeric select generate_series(2, 2), generate_series(64, 64);
-insert into nums_label select generate_series(1, 100000), generate_series(1, 100000);
+insert into nums_label select generate_series(1, 1), generate_series(1, 1);
 
 insert into nums_null select generate_series(1, 1), generate_series(2, 2);
 insert into nums_null select 1 as x, null as y;
@@ -78,7 +78,7 @@ language C STRICT;
 --select * from pagerank((select * from pages), (lambda(src)(src.src)), (lambda(dst)(dst.dst)), 0.85, 0.00001, 100, 100) limit 10;
 --select * from pagerank_threads((select * from pages), (lambda(src)(src.src)), (lambda(dst)(dst.dst)), 0.85, 0.00001, 100, 100) limit 10;
 
---select * from autodiff((select x, y, z from nums),(lambda(a)(a.x*a.x + 2 * a.y - a.z))) limit 10;
+select * from autodiff((select x, y, z from nums),(lambda(a)(a.x*a.x + 2 * a.y - a.z))) limit 10;
 --select * from autodiff((select x, y from nums_numeric),(lambda(a)(log(a.x, a.y)))) limit 10;
 --select * from autodiff((select x, y from nums_null), (lambda(a)(a.x + a.y))) limit 10;
-select * from autodiff((select x, y, z from nums),lambda(x)((x.x+x.y)*x.z)); 
+--select * from autodiff((select x, y, z from nums),lambda(x)((x.x+x.y)*x.z)); 

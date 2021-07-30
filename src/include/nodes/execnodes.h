@@ -55,8 +55,7 @@ typedef Datum (*ExprStateSimpleEvalFunc) (Datum **params);
 typedef Datum (*ExprStateDeriveFunc)(struct ExprState *expression,
 									 struct ExprContext *econtext,
 									 bool *isNull,
-									 Datum *derivatives,
-									 int derivatives_length);
+									 Datum *derivatives);
 
 /* Bits in ExprState->flags (see also execExpr.h for private flag bits): */
 /* expression is for use with ExecQual() */
