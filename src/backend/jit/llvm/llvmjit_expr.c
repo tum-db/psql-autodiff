@@ -3278,7 +3278,7 @@ bool llvm_compile_expr_derive(ExprState *state)
 
 			v_seed = l_float8_const(1.0);
 
-			llvm_compile_expr_deriv_subtree(b, mod, state, state->steps_len - 2, v_seed, v_derivatives); 
+			llvm_compile_expr_deriv_subtree(b, mod, state, state->steps_len - 2, v_seed, v_derivatives);
 
 			LLVMBuildRet(b, v_tmpvalue);
 			break;
@@ -3445,28 +3445,27 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, /* Builder containing the pre-
 	{
 	case 59: /*EEOP_FIELDSELECT*/ 
 	{
-		LLVMValueRef v_derivative,       /* The datum pointer(basically derivatives[i]) */
-		             v_derivative_p,     /* The pointer into the derivatives array */
-					 v_tmpfieldnum,      /* The fieldNum parameter of the Fieldselect */
-					 v_tmpderivative;    /* The value behind the datum-pointer */
+		LLVMValueRef v_derivative, /* The datum pointer(basically derivatives[i]) */
+			v_derivative_p,		   /* The pointer into the derivatives array */
+			v_tmpfieldnum,		   /* The fieldNum parameter of the Fieldselect */
+			v_tmpderivative;	   /* The value behind the datum-pointer */
 
 		v_tmpfieldnum = l_int32_const(state->steps[fetchIndex].d.fieldselect.fieldnum - 1);
-		v_derivative_p = LLVMBuildGEP(b, 
-		                             derivatives, 
-		                             &v_tmpfieldnum, 
-									 1, "");
-		v_derivative = LLVMBuildLoad(b, v_derivative_p, "");
+		v_derivative_p = LLVMBuildGEP(b,
+									  derivatives,
+									  &v_tmpfieldnum,
+									  1, "");
 		v_tmpderivative = LLVMBuildBinOp(b, LLVMFAdd,
 										 l_as_float8(b, seed),
-										 l_as_float8(b, LLVMBuildLoad(b, v_derivative, "")),
-										 "fadd");
-		LLVMBuildStore(b, v_tmpderivative, v_derivative);
+										 l_as_float8(b, LLVMBuildLoad(b, v_derivative_p, "")),
+										 "");
+		LLVMBuildStore(b, v_tmpderivative, v_derivative_p);
 		resultFetchIndex = fetchIndex - 2;
 		break;
 	}
 	case 16: /*EEOP_CONST*/
 	{
-		resultFetchIndex = fetchIndex - 2; //can be skipped, d_const/d_x=0
+		resultFetchIndex = fetchIndex - 1; //can be skipped, d_const/d_x=0
 		break;
 	}
 	case 18: /*EEOP_FUNCEXPR_STRICT*/
@@ -3478,8 +3477,7 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, /* Builder containing the pre-
 			LLVMValueRef x, y, newSeedX, newSeedY;
 			int startingPointY, stepAfterX;
 
-			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)state->steps[fetchIndex].d.func.fcinfo_data->arg[0], TypeDatum), ""));
-			y = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)state->steps[fetchIndex].d.func.fcinfo_data->arg[1], TypeDatum), ""));
+			//TODO: Read value from fn_info
 
 			newSeedX = LLVMBuildBinOp(b, LLVMFMul, y, l_as_float8(b, seed), "");
 			newSeedY = LLVMBuildBinOp(b, LLVMFMul, x, l_as_float8(b, seed), "");
