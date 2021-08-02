@@ -61,7 +61,7 @@ static LLVMValueRef build_EvalCFunc(LLVMBuilderRef b, LLVMModuleRef mod,
 									const char *funcname, LLVMValueRef *params,
 									LLVMTypeRef *param_types, LLVMTypeRef rettype, int nparams);
 static LLVMValueRef create_LifetimeEnd(LLVMModuleRef mod);
-static int llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, ExprState *state,
+static int llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, LLVMModuleRef mod, ExprState *state,
 										   int fetchIndex, LLVMValueRef seed,
 										   LLVMValueRef derivatives);
 
@@ -2987,7 +2987,7 @@ ExecRunCompiledExprDeriv(ExprState *state, ExprContext *econtext, bool *isNull, 
 {
 	CompiledExprState *cstate = state->derivefunc_private;
 	ExprStateDeriveFunc func;
-
+	
 	CheckExprStillValid(state, econtext);
 
 	llvm_enter_fatal_on_oom();
@@ -2995,10 +2995,10 @@ ExecRunCompiledExprDeriv(ExprState *state, ExprContext *econtext, bool *isNull, 
 												  cstate->funcname);
 	llvm_leave_fatal_on_oom();
 	Assert(func);
-
+	
 	/* remove indirection via this function for future calls */
 	state->derivefunc = func;
-
+	
 	return func(state, econtext, isNull, derivatives);
 }
 
@@ -3241,7 +3241,7 @@ bool llvm_compile_expr_derive(ExprState *state)
 									  "v.state.resnull");
 
 	/* allocate blocks for each op upfront, so we can do jumps easily */
-	opblocks = palloc(sizeof(LLVMBasicBlockRef) * state->steps_len);
+	opblocks = palloc(sizeof(LLVMBasicBlockRef) * (state->steps_len));
 	for (i = 0; i < state->steps_len; i++)
 		opblocks[i] = l_bb_append_v(eval_fn, "b.op.%d.start", i);
 
@@ -3267,9 +3267,8 @@ bool llvm_compile_expr_derive(ExprState *state)
 		{
 		case EEOP_DONE:
 		{
-			LLVMValueRef v_tmpisnull,
-				v_tmpvalue;
-
+			LLVMValueRef v_tmpisnull, v_tmpvalue, v_seed;
+			
 			v_tmpvalue = LLVMBuildLoad(b, v_tmpvaluep, "");
 			v_tmpisnull = LLVMBuildLoad(b, v_tmpisnullp, "");
 			v_tmpisnull =
@@ -3277,8 +3276,9 @@ bool llvm_compile_expr_derive(ExprState *state)
 
 			LLVMBuildStore(b, v_tmpisnull, v_isnullp);
 
-			/* before returning we need to build the derivation function */
-			//llvm_compile_expr_deriv_subtree();
+			v_seed = l_float8_const(1.0);
+
+			llvm_compile_expr_deriv_subtree(b, mod, state, state->steps_len - 2, v_seed, v_derivatives); 
 
 			LLVMBuildRet(b, v_tmpvalue);
 			break;
@@ -3414,7 +3414,6 @@ bool llvm_compile_expr_derive(ExprState *state)
 	 * remapping overhead.
 	 */
 	{
-
 		CompiledExprState *cstate = palloc0(sizeof(CompiledExprState));
 
 		cstate->context = context;
@@ -3434,21 +3433,40 @@ bool llvm_compile_expr_derive(ExprState *state)
 }
 
 static int
-llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, ExprState *state,
-								int fetchIndex, LLVMValueRef seed,
-								LLVMValueRef derivatives)
+llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, /* Builder containing the pre-built eval-func */
+                                LLVMModuleRef mod,/* The module where the build function will be stored */
+                                ExprState *state, /* State containing intermediate values for the derivations */
+								int fetchIndex,   /* The step in the op_code sequence from where to start */
+								LLVMValueRef seed,/* seed for current subtree, not a pointer */
+								LLVMValueRef derivatives) /* Datum(therefore pointer) array, containing all derivatives */
 {
 	int resultFetchIndex = fetchIndex;
 	switch (state->steps[fetchIndex].opcode)
 	{
-	case 59: /*EEOP_FIELDSELECT*/ //TODO: add ParamExtern somehow
+	case 59: /*EEOP_FIELDSELECT*/ 
 	{
-		resultFetchIndex -= 2;
+		LLVMValueRef v_derivative,       /* The datum pointer(basically derivatives[i]) */
+		             v_derivative_p,     /* The pointer into the derivatives array */
+					 v_tmpfieldnum,      /* The fieldNum parameter of the Fieldselect */
+					 v_tmpderivative;    /* The value behind the datum-pointer */
+
+		v_tmpfieldnum = l_int32_const(state->steps[fetchIndex].d.fieldselect.fieldnum - 1);
+		v_derivative_p = LLVMBuildGEP(b, 
+		                             derivatives, 
+		                             &v_tmpfieldnum, 
+									 1, "");
+		v_derivative = LLVMBuildLoad(b, v_derivative_p, "");
+		v_tmpderivative = LLVMBuildBinOp(b, LLVMFAdd,
+										 l_as_float8(b, seed),
+										 l_as_float8(b, LLVMBuildLoad(b, v_derivative, "")),
+										 "fadd");
+		LLVMBuildStore(b, v_tmpderivative, v_derivative);
+		resultFetchIndex = fetchIndex - 2;
 		break;
 	}
 	case 16: /*EEOP_CONST*/
 	{
-		resultFetchIndex -= 1; //can be skipped, d_const/d_x=0
+		resultFetchIndex = fetchIndex - 2; //can be skipped, d_const/d_x=0
 		break;
 	}
 	case 18: /*EEOP_FUNCEXPR_STRICT*/
@@ -3457,52 +3475,281 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, ExprState *state,
 		{
 		case 216: /*float8 binary multiplication*/
 		{
+			LLVMValueRef x, y, newSeedX, newSeedY;
+			int startingPointY, stepAfterX;
 
+			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)state->steps[fetchIndex].d.func.fcinfo_data->arg[0], TypeDatum), ""));
+			y = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)state->steps[fetchIndex].d.func.fcinfo_data->arg[1], TypeDatum), ""));
+
+			newSeedX = LLVMBuildBinOp(b, LLVMFMul, y, l_as_float8(b, seed), "");
+			newSeedY = LLVMBuildBinOp(b, LLVMFMul, x, l_as_float8(b, seed), "");
+
+			startingPointY = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedY, derivatives);
+			stepAfterX = llvm_compile_expr_deriv_subtree(b, mod, state, startingPointY, newSeedX, derivatives);
+			resultFetchIndex = stepAfterX;
 			break;
 		}
 		case 217: /*float8 binary divison*/
 		{
+			LLVMValueRef x, y, newSeedX, newSeedY;
+			int startingPointY, stepAfterX;
 
+			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)state->steps[fetchIndex].d.func.fcinfo_data->arg[0], TypeDatum), ""));
+			y = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)state->steps[fetchIndex].d.func.fcinfo_data->arg[1], TypeDatum), ""));
+
+			newSeedX = LLVMBuildBinOp(b, LLVMFDiv, l_as_float8(b, seed), y, "");
+			newSeedY = LLVMBuildBinOp(b,
+									  LLVMFDiv,
+									  (LLVMBuildBinOp(b,
+													  LLVMFMul,
+													  l_as_float8(b, seed),
+													  (LLVMBuildBinOp(b, LLVMFMul, x, l_float8_const(-1.0), "")),
+													  "")),
+									  (LLVMBuildBinOp(b,
+													  LLVMFMul,
+													  y,
+													  y,
+													  "")),
+									  "");
+
+			startingPointY = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedY, derivatives);
+			stepAfterX = llvm_compile_expr_deriv_subtree(b, mod, state, startingPointY, newSeedX, derivatives);
+			resultFetchIndex = stepAfterX;
 			break;
 		}
 		case 218: /*float8 binary addition*/
 		{
+			int startingPointY, stepAfterX;
+
+			startingPointY = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, seed, derivatives);
+			stepAfterX = llvm_compile_expr_deriv_subtree(b, mod, state, startingPointY, seed, derivatives);
+			resultFetchIndex = stepAfterX;
 
 			break;
 		}
 		case 219: /*float8 binary subtraction*/
 		{
+			int startingPointY, stepAfterX;
+
+			startingPointY = llvm_compile_expr_deriv_subtree(b, 
+			                                                 mod,
+															 state,
+															 fetchIndex - 1,
+															 LLVMBuildNeg(b, l_as_float8(b, seed), ""),
+															 derivatives);
+			stepAfterX = llvm_compile_expr_deriv_subtree(b, mod, state, startingPointY, seed, derivatives);
+			resultFetchIndex = stepAfterX;
 
 			break;
 		}
 		case 1346: /*float8 binary pow x^y*/
 		{
+			LLVMValueRef x, y, newSeedX, newSeedY, params_pow_x[2], params_pow_y[2], params_log[1];
+			LLVMTypeRef types[2];
+			int startingPointY, stepAfterX;
 
+			types[0] = LLVMDoubleType();
+			types[1] = LLVMDoubleType();
+
+			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)state->steps[fetchIndex].d.func.fcinfo_data->arg[0], TypeDatum), ""));
+			y = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)state->steps[fetchIndex].d.func.fcinfo_data->arg[1], TypeDatum), ""));
+
+			params_pow_x[0] = x;
+			params_pow_x[1] = LLVMBuildBinOp(b, LLVMFSub, y, l_float8_const(1), "");
+
+			params_pow_y[0] = x;
+			params_pow_y[1] = y;
+
+			params_log[0] = x;
+
+			newSeedX = LLVMBuildBinOp(b,
+									  LLVMFMul,
+									  LLVMBuildBinOp(b,
+													 LLVMFMul,
+													 y,
+													 l_as_float8(b, seed),
+													 ""),
+									  build_EvalCFunc(b, 
+									                  mod, 
+													  "pow", 
+													  (LLVMValueRef *)&params_pow_x, 
+													  (LLVMTypeRef *)&types, 
+													  types[0], 
+													  2),
+									  "");
+			newSeedY = LLVMBuildBinOp(b,
+									  LLVMFMul,
+									  LLVMBuildBinOp(b,
+													 LLVMFMul,
+													 build_EvalCFunc(b,
+																	 mod,
+																	 "pow",
+																	 (LLVMValueRef *)&params_pow_y,
+																	 (LLVMTypeRef *)&types,
+																	 types[0],
+																	 2),
+													 build_EvalCFunc(b,
+																	 mod,
+																	 "log",
+																	 (LLVMValueRef *)&params_log,
+																	 (LLVMTypeRef *)&types,
+																	 types[0],
+																	 1),
+													 ""),
+									  l_as_float8(b, seed),
+									  "");
+
+			startingPointY = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedY, derivatives);
+			stepAfterX = llvm_compile_expr_deriv_subtree(b, mod, state, startingPointY, newSeedX, derivatives);
+			resultFetchIndex = stepAfterX;
 			break;
 		}
 		case 1344: /*float8 unary sqrt*/
 		{
+			LLVMValueRef x, newSeedX, params_sqrt[1];
+			LLVMTypeRef types[1];
+			int stepAfterX;
 
+			types[0] = LLVMDoubleType();
+
+			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)state->steps[fetchIndex].d.func.fcinfo_data->arg[0], TypeDatum), ""));
+
+			params_sqrt[0] = x;
+
+			newSeedX = LLVMBuildBinOp(b,
+									  LLVMFDiv,
+									  l_as_float8(b, seed),
+									  LLVMBuildBinOp(b,
+													 LLVMFMul,
+													 l_float8_const(2.0),
+									  				 build_EvalCFunc(b,
+																	 mod,
+																	 "sqrt",
+																	 (LLVMValueRef *)&params_sqrt,
+																	 (LLVMTypeRef *)&types,
+																	 types[0],
+																	 1),
+											         ""),
+									 "");
+
+			stepAfterX = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives);
+			resultFetchIndex = stepAfterX;
 			break;
 		}
 		case 1395: /*float8 unary abs*/
 		{
+			LLVMValueRef x, newSeedX, params_abs[1];
+			LLVMTypeRef types[1];
+			int stepAfterX;
 
+			types[0] = LLVMDoubleType();
+
+			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)state->steps[fetchIndex].d.func.fcinfo_data->arg[0], TypeDatum), ""));
+
+			params_abs[0] = x;
+
+			newSeedX = LLVMBuildBinOp(b,
+									  LLVMFMul,
+									  l_as_float8(b, seed),
+									  LLVMBuildBinOp(b,
+													 LLVMFDiv,
+													 x,
+													 build_EvalCFunc(b,
+																	 mod,
+																	 "fabs",
+																	 (LLVMValueRef *)&params_abs,
+																	 (LLVMTypeRef *)&types,
+																	 types[0],
+																	 1),
+													 ""),
+									  "");
+
+			stepAfterX = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives);
+			resultFetchIndex = stepAfterX;
 			break;
 		}
 		case 1604: /*float8 unary sin*/
 		{
+			LLVMValueRef x, newSeedX, params_cos[1];
+			LLVMTypeRef types[1];
+			int stepAfterX;
 
+			types[0] = LLVMDoubleType();
+
+			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)state->steps[fetchIndex].d.func.fcinfo_data->arg[0], TypeDatum), ""));
+
+			params_cos[0] = x;
+
+			newSeedX = LLVMBuildBinOp(b,
+									  LLVMFMul,
+									  l_as_float8(b, seed),
+									  build_EvalCFunc(b,
+													  mod,
+													  "cos",
+													  (LLVMValueRef *)&params_cos,
+													  (LLVMTypeRef *)&types,
+													  types[0],
+													  1),
+									  "");
+
+			stepAfterX = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives);
+			resultFetchIndex = stepAfterX;
 			break;
 		}
 		case 1605: /*float8 unary cos*/
 		{
+			LLVMValueRef x, newSeedX, params_sin[1];
+			LLVMTypeRef types[1];
+			int stepAfterX;
 
+			types[0] = LLVMDoubleType();
+
+			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)state->steps[fetchIndex].d.func.fcinfo_data->arg[0], TypeDatum), ""));
+
+			params_sin[0] = x;
+
+			newSeedX = LLVMBuildBinOp(b,
+									  LLVMFMul,
+									  LLVMBuildNeg(b, l_as_float8(b, seed), ""),
+									  build_EvalCFunc(b,
+													  mod,
+													  "sin",
+													  (LLVMValueRef *)&params_sin,
+													  (LLVMTypeRef *)&types,
+													  types[0],
+													  1),
+									  "");
+
+			stepAfterX = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives);
+			resultFetchIndex = stepAfterX;
 			break;
 		}
 		case 1347: /*float8 unary exp*/
 		{
+			LLVMValueRef x, newSeedX, params_exp[1];
+			LLVMTypeRef types[1];
+			int stepAfterX;
 
+			types[0] = LLVMDoubleType();
+
+			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)state->steps[fetchIndex].d.func.fcinfo_data->arg[0], TypeDatum), ""));
+
+			params_exp[0] = x;
+
+			newSeedX = LLVMBuildBinOp(b,
+									  LLVMFMul,
+									  l_as_float8(b, seed),
+									  build_EvalCFunc(b,
+													  mod,
+													  "exp",
+													  (LLVMValueRef *)&params_exp,
+													  (LLVMTypeRef *)&types,
+													  types[0],
+													  1),
+									  "");
+
+			stepAfterX = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives);
+			resultFetchIndex = stepAfterX;
 			break;
 		}
 		default:
