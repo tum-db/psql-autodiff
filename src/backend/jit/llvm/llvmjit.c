@@ -316,7 +316,6 @@ llvm_get_function(LLVMJitContext *context, const char *funcname)
 	{
 		llvm_compile_module(context);
 	}
-
 	/*
 	 * ORC's symbol table is of *unmangled* symbols. Therefore we don't need
 	 * to mangle here.

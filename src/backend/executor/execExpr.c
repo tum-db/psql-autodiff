@@ -255,7 +255,7 @@ Datum ExecDeriveLambdaExpr(ExprState *expression, ExprContext *econtext, bool *i
 
 	//reverse through steps to derive each var
 	ExecLambdaDeriveSubtree(state, state->steps_len - 2, Float8GetDatum(1.0), derivatives);
-	printf("Interpreted derivation was used today");
+	printf("Interpreted derivation used\n");
 
 	return result;
 }
@@ -270,7 +270,7 @@ int
 ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *derivatives) {
 	int resultFetchIndex = fetchIndex;
 	switch (state->steps[fetchIndex].opcode) {
-		case 59: /*EEOP_FIELDSELECT*/ //TODO: add ParamExtern somehow
+		case 59: /*EEOP_FIELDSELECT*/ 
 			{
 				int fieldNum = state->steps[fetchIndex].d.fieldselect.fieldnum - 1; 									//figure out which var
 				derivatives[fieldNum] = Float8GetDatum(DatumGetFloat8(derivatives[fieldNum]) + DatumGetFloat8(seed));	//add seed to corresponding derivativeAggregate
@@ -317,27 +317,17 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 					}
 				case 218: /*float8 binary addition*/
 					{
-						float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
-						float8 y = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[1]);
-
-						Datum newSeedX = seed;
-						Datum newSeedY = seed;
-
-						int startingPointForY = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedY, derivatives);
-						int stepIndexAfterX = ExecLambdaDeriveSubtree(state, startingPointForY, newSeedX, derivatives);
+						int startingPointForY = ExecLambdaDeriveSubtree(state, fetchIndex - 1, seed, derivatives);
+						int stepIndexAfterX = ExecLambdaDeriveSubtree(state, startingPointForY, seed, derivatives);
 						resultFetchIndex = stepIndexAfterX;
 						break;
 					}
 				case 219: /*float8 binary subtraction*/
 					{
-						float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
-						float8 y = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[1]);
-
-						Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed));
 						Datum newSeedY = Float8GetDatum(DatumGetFloat8(seed) * (-1));
 
 						int startingPointForY = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedY, derivatives);
-						int stepIndexAfterX = ExecLambdaDeriveSubtree(state, startingPointForY, newSeedX, derivatives);
+						int stepIndexAfterX = ExecLambdaDeriveSubtree(state, startingPointForY, seed, derivatives);
 						resultFetchIndex = stepIndexAfterX;
 						break;
 					}

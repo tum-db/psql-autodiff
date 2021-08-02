@@ -78,7 +78,7 @@ language C STRICT;
 --select * from pagerank((select * from pages), (lambda(src)(src.src)), (lambda(dst)(dst.dst)), 0.85, 0.00001, 100, 100) limit 10;
 --select * from pagerank_threads((select * from pages), (lambda(src)(src.src)), (lambda(dst)(dst.dst)), 0.85, 0.00001, 100, 100) limit 10;
 
-select * from autodiff((select x, y, z from nums),(lambda(a)(a.x*a.x + 2 * a.y - a.z))) limit 10;
+--select * from autodiff((select x, y, z from nums),(lambda(a)(a.x*a.x + 2 * a.y - a.z))) limit 10;
 --select * from autodiff((select x, y from nums_numeric),(lambda(a)(log(a.x, a.y)))) limit 10;
 --select * from autodiff((select x, y from nums_null), (lambda(a)(a.x + a.y))) limit 10;
---select * from autodiff((select x, y, z from nums),lambda(x)((x.x+x.y)*x.z)); 
+select * from autodiff((select x, y, z from nums),lambda(x)((x.x+x.y))); 
