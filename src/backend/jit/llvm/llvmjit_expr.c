@@ -3478,6 +3478,8 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, /* Builder containing the pre-
 			int startingPointY, stepAfterX;
 
 			//TODO: Read value from fn_info
+			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[0], l_ptr(TypeDatum)), ""));
+			y = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[1], l_ptr(TypeDatum)), ""));
 
 			newSeedX = LLVMBuildBinOp(b, LLVMFMul, y, l_as_float8(b, seed), "");
 			newSeedY = LLVMBuildBinOp(b, LLVMFMul, x, l_as_float8(b, seed), "");
@@ -3492,8 +3494,8 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, /* Builder containing the pre-
 			LLVMValueRef x, y, newSeedX, newSeedY;
 			int startingPointY, stepAfterX;
 
-			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)state->steps[fetchIndex].d.func.fcinfo_data->arg[0], TypeDatum), ""));
-			y = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)state->steps[fetchIndex].d.func.fcinfo_data->arg[1], TypeDatum), ""));
+			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[0], l_ptr(TypeDatum)), ""));
+			y = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[1], l_ptr(TypeDatum)), ""));
 
 			newSeedX = LLVMBuildBinOp(b, LLVMFDiv, l_as_float8(b, seed), y, "");
 			newSeedY = LLVMBuildBinOp(b,
@@ -3549,8 +3551,8 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, /* Builder containing the pre-
 			types[0] = LLVMDoubleType();
 			types[1] = LLVMDoubleType();
 
-			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)state->steps[fetchIndex].d.func.fcinfo_data->arg[0], TypeDatum), ""));
-			y = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)state->steps[fetchIndex].d.func.fcinfo_data->arg[1], TypeDatum), ""));
+			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[0], l_ptr(TypeDatum)), ""));
+			y = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[1], l_ptr(TypeDatum)), ""));
 
 			params_pow_x[0] = x;
 			params_pow_x[1] = LLVMBuildBinOp(b, LLVMFSub, y, l_float8_const(1), "");
@@ -3610,7 +3612,7 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, /* Builder containing the pre-
 
 			types[0] = LLVMDoubleType();
 
-			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)state->steps[fetchIndex].d.func.fcinfo_data->arg[0], TypeDatum), ""));
+			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[0], l_ptr(TypeDatum)), ""));
 
 			params_sqrt[0] = x;
 
@@ -3642,7 +3644,7 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, /* Builder containing the pre-
 
 			types[0] = LLVMDoubleType();
 
-			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)state->steps[fetchIndex].d.func.fcinfo_data->arg[0], TypeDatum), ""));
+			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[0], l_ptr(TypeDatum)), ""));
 
 			params_abs[0] = x;
 
@@ -3674,7 +3676,7 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, /* Builder containing the pre-
 
 			types[0] = LLVMDoubleType();
 
-			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)state->steps[fetchIndex].d.func.fcinfo_data->arg[0], TypeDatum), ""));
+			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[0], l_ptr(TypeDatum)), ""));
 
 			params_cos[0] = x;
 
@@ -3702,7 +3704,7 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, /* Builder containing the pre-
 
 			types[0] = LLVMDoubleType();
 
-			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)state->steps[fetchIndex].d.func.fcinfo_data->arg[0], TypeDatum), ""));
+			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[0], l_ptr(TypeDatum)), ""));
 
 			params_sin[0] = x;
 
@@ -3730,7 +3732,7 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, /* Builder containing the pre-
 
 			types[0] = LLVMDoubleType();
 
-			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)state->steps[fetchIndex].d.func.fcinfo_data->arg[0], TypeDatum), ""));
+			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[0], l_ptr(TypeDatum)), ""));
 
 			params_exp[0] = x;
 

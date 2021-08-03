@@ -1,9 +1,9 @@
 --meta flags, jit needs to be on, load llvm loads some dependencies
 set jit='on';
 load 'llvmjit.so';
---set jit_above_cost = 0;             --enforce jit-usage
---set jit_inline_above_cost = 0;      --enforce jit-usage
---set jit_optimize_above_cost = 0;    --enforce jit-usage
+set jit_above_cost = 0;             --enforce jit-usage
+set jit_inline_above_cost = 0;      --enforce jit-usage
+set jit_optimize_above_cost = 0;    --enforce jit-usage
 
 --drop all tables, to create new and fresh ones
 drop table if exists nums;
@@ -81,4 +81,4 @@ language C STRICT;
 --select * from autodiff((select x, y, z from nums),(lambda(a)(a.x*a.x + 2 * a.y - a.z))) limit 10;
 --select * from autodiff((select x, y from nums_numeric),(lambda(a)(log(a.x, a.y)))) limit 10;
 --select * from autodiff((select x, y from nums_null), (lambda(a)(a.x + a.y))) limit 10;
-select * from autodiff((select x, y, z from nums),lambda(x)((x.x+x.y))); 
+select * from autodiff((select x, y, z from nums),lambda(a)((a.x*a.y) + a.z/2)); 
