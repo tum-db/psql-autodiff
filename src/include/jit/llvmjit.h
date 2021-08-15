@@ -139,6 +139,8 @@ extern LLVMValueRef llvm_function_reference(LLVMJitContext *context,
 extern Datum (*llvm_prepare_lambda_tablefunc(LLVMJitContext *context, char* bcModule,char* funcName, int numLambdas))(PG_FUNCTION_ARGS);
 
 extern Datum (*llvm_prepare_simple_expression(ExprState *state))(Datum **);
+extern Datum (*llvm_prepare_simple_expression_derivation(ExprState *state))(Datum **, Datum *);
+
 extern void llvm_inline(LLVMModuleRef mod);
 
 /*

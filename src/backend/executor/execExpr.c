@@ -205,14 +205,6 @@ ExecInitLambdaExpr(Node *node, bool fastLambda, bool buildDiff)
 	state->parent->state->es_jit_flags |= PGJIT_INLINE;
 	state->parent->state->es_jit_flags |= PGJIT_OPT3;
 
-	if (!jit_force_compile_expr(state, false))
-	{
-		ereport(WARNING,
-				(errmsg("lambda expression could not be JIT-compiled; please make sure "
-						"LLVM is enabled.")));
-
-		ExecReadyExpr(state);
-	}
 	if (buildDiff) {
 		if (!jit_force_compile_expr(state, true))
 		{
@@ -221,6 +213,15 @@ ExecInitLambdaExpr(Node *node, bool fastLambda, bool buildDiff)
 							"LLVM is enabled.")));
 
 			ExecReadyDeriveExpr(state);
+		}
+	} else {
+		if (!jit_force_compile_expr(state, false))
+		{
+			ereport(WARNING,
+					(errmsg("lambda expression could not be JIT-compiled; please make sure "
+							"LLVM is enabled.")));
+
+			ExecReadyExpr(state);
 		}
 	}
 
@@ -255,7 +256,6 @@ Datum ExecDeriveLambdaExpr(ExprState *expression, ExprContext *econtext, bool *i
 
 	//reverse through steps to derive each var
 	ExecLambdaDeriveSubtree(state, state->steps_len - 2, Float8GetDatum(1.0), derivatives);
-	printf("Interpreted derivation used\n");
 
 	return result;
 }
@@ -269,153 +269,258 @@ Datum ExecDeriveLambdaExpr(ExprState *expression, ExprContext *econtext, bool *i
 int
 ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *derivatives) {
 	int resultFetchIndex = fetchIndex;
-	switch (state->steps[fetchIndex].opcode) {
-		case 59: /*EEOP_FIELDSELECT*/ 
-			{
-				int fieldNum = state->steps[fetchIndex].d.fieldselect.fieldnum - 1; 									//figure out which var
-				derivatives[fieldNum] = Float8GetDatum(DatumGetFloat8(derivatives[fieldNum]) + DatumGetFloat8(seed));	//add seed to corresponding derivativeAggregate
-				resultFetchIndex = resultFetchIndex - 2;																//return steps above paramextern
-				break;
+	switch (ExecEvalStepOp(state, &(state->steps[fetchIndex])))
+	{
+	case 59: /*EEOP_FIELDSELECT*/
+	{
+		int fieldNum = state->steps[fetchIndex].d.fieldselect.fieldnum - 1;
+		derivatives[fieldNum] = Float8GetDatum(DatumGetFloat8(derivatives[fieldNum]) + DatumGetFloat8(seed));
+		resultFetchIndex = resultFetchIndex - 2;
+		break;
 			}
 		case 16: /*EEOP_CONST*/
 			{
-				resultFetchIndex = resultFetchIndex - 1;																//can be skipped, d_const/d_x=0
+				resultFetchIndex = resultFetchIndex - 1;
 				break;
 			}
+		case 17:
 		case 18: /*EEOP_FUNCEXPR*/
 			{
 				switch (state->steps[fetchIndex].d.func.finfo->fn_oid)
 				{
+				case 1726:
 				case 216: /*float8 binary multiplication*/
-					{
-						float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
-						float8 y = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[1]);
+				{
+					float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+					float8 y = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[1]);
 
-						Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * y);
-						Datum newSeedY = Float8GetDatum(DatumGetFloat8(seed) * x);
+					Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * y);
+					Datum newSeedY = Float8GetDatum(DatumGetFloat8(seed) * x);
 
-						int startingPointForY = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedY, derivatives);
-						int stepIndexAfterX = ExecLambdaDeriveSubtree(state, startingPointForY, newSeedX, derivatives);
-						resultFetchIndex = stepIndexAfterX;
-						break;
-					}
+					int startingPointForY = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedY, derivatives);
+					int stepIndexAfterX = ExecLambdaDeriveSubtree(state, startingPointForY, newSeedX, derivatives);
+					resultFetchIndex = stepIndexAfterX;
+					break;
+				}
+				case 1727:
 				case 217: /*float8 binary divison*/
-					{
-						float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
-						float8 y = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[1]);
+				{
+					float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+					float8 y = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[1]);
 
-						if (y == 0)
-							ereport(ERROR, (errcode(ERRCODE_DIVISION_BY_ZERO), errmsg("Derive: BINARY DIVISION, division by Zero!")));
+					if (y == 0)
+						ereport(ERROR, (errcode(ERRCODE_DIVISION_BY_ZERO), errmsg("Derive: BINARY DIVISION, division by Zero!")));
 
-						Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) / y);
-						Datum newSeedY = Float8GetDatum((DatumGetFloat8(seed) * x * (-1)) / (y * y));
+					Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) / y);
+					Datum newSeedY = Float8GetDatum((DatumGetFloat8(seed) * x * (-1)) / (y * y));
 
-						int startingPointForY = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedY, derivatives);
-						int stepIndexAfterX = ExecLambdaDeriveSubtree(state, startingPointForY, newSeedX, derivatives);
-						resultFetchIndex = stepIndexAfterX;
-						break;
-					}
+					int startingPointForY = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedY, derivatives);
+					int stepIndexAfterX = ExecLambdaDeriveSubtree(state, startingPointForY, newSeedX, derivatives);
+					resultFetchIndex = stepIndexAfterX;
+					break;
+				}
+				case 1724:
 				case 218: /*float8 binary addition*/
-					{
-						int startingPointForY = ExecLambdaDeriveSubtree(state, fetchIndex - 1, seed, derivatives);
-						int stepIndexAfterX = ExecLambdaDeriveSubtree(state, startingPointForY, seed, derivatives);
-						resultFetchIndex = stepIndexAfterX;
-						break;
-					}
+				{
+					int startingPointForY = ExecLambdaDeriveSubtree(state, fetchIndex - 1, seed, derivatives);
+					int stepIndexAfterX = ExecLambdaDeriveSubtree(state, startingPointForY, seed, derivatives);
+					resultFetchIndex = stepIndexAfterX;
+					break;
+				}
+				case 1725:
 				case 219: /*float8 binary subtraction*/
-					{
-						Datum newSeedY = Float8GetDatum(DatumGetFloat8(seed) * (-1));
+				{
+					Datum newSeedY = Float8GetDatum(DatumGetFloat8(seed) * (-1));
 
-						int startingPointForY = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedY, derivatives);
-						int stepIndexAfterX = ExecLambdaDeriveSubtree(state, startingPointForY, seed, derivatives);
-						resultFetchIndex = stepIndexAfterX;
-						break;
-					}
+					int startingPointForY = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedY, derivatives);
+					int stepIndexAfterX = ExecLambdaDeriveSubtree(state, startingPointForY, seed, derivatives);
+					resultFetchIndex = stepIndexAfterX;
+					break;
+				}
+				case 232:
 				case 1346: /*float8 binary pow x^y*/
-					{
-						float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
-						float8 y = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[1]);
+				{
+					float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+					float8 y = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[1]);
 
-						Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * y * (pow(x, y - 1)));
-						Datum newSeedY = Float8GetDatum(DatumGetFloat8(seed) * pow(x, y) * log(x));
+					Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * y * (pow(x, y - 1)));
+					Datum newSeedY = Float8GetDatum(DatumGetFloat8(seed) * pow(x, y) * log(x));
 
-						int startingPointForY = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedY, derivatives);
-						int stepIndexAfterX = ExecLambdaDeriveSubtree(state, startingPointForY, newSeedX, derivatives);
-						resultFetchIndex = stepIndexAfterX;
-						break;
-					}
+					int startingPointForY = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedY, derivatives);
+					int stepIndexAfterX = ExecLambdaDeriveSubtree(state, startingPointForY, newSeedX, derivatives);
+					resultFetchIndex = stepIndexAfterX;
+					break;
+				}
+				case 230:
 				case 1344: /*float8 unary sqrt*/
-					{
-						float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+				{
+					float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
 
-						if (x == 0)
-							ereport(ERROR, (errcode(ERRCODE_DIVISION_BY_ZERO), errmsg("Derive: SQRT, division by Zero!")));
+					if (x == 0)
+						ereport(ERROR, (errcode(ERRCODE_DIVISION_BY_ZERO), errmsg("Derive: SQRT, division by Zero!")));
 
-						Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) / (2 * sqrt(x)));
+					Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) / (2 * sqrt(x)));
 
-						int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
-						resultFetchIndex = stepsAfterSubtree;
-						break;
-					}
+					int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+					resultFetchIndex = stepsAfterSubtree;
+					break;
+				}
+				case 221:
 				case 1395: /*float8 unary abs*/
-					{
-						float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+				{
+					float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
 
-						if (x == 0)
-							ereport(ERROR, (errcode(ERRCODE_DIVISION_BY_ZERO), errmsg("Derive: ABS, division by Zero!")));
+					if (x == 0)
+						ereport(ERROR, (errcode(ERRCODE_DIVISION_BY_ZERO), errmsg("Derive: ABS, division by Zero!")));
 
-						float8 signOfX = (x < 0) ? -1.0 : 1.0;
+					float8 signOfX = (x < 0) ? -1.0 : 1.0;
 
-						Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * signOfX);
+					Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * signOfX);
 
-						int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
-						resultFetchIndex = stepsAfterSubtree;
-						break;
-					}
+					int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+					resultFetchIndex = stepsAfterSubtree;
+					break;
+				}
 				case 1604: /*float8 unary sin*/
-					{
-						float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+				{
+					float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
 
-						Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * cos(x));
+					Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * cos(x));
 
-						int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
-						resultFetchIndex = stepsAfterSubtree;
-						break;
-					}
+					int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+					resultFetchIndex = stepsAfterSubtree;
+					break;
+				}
 				case 1605: /*float8 unary cos*/
-					{
-						float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+				{
+					float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
 
-						Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * (-1) * sin(x));
+					Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * (-1) * sin(x));
 
-						int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
-						resultFetchIndex = stepsAfterSubtree;
-						break;
-					}
+					int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+					resultFetchIndex = stepsAfterSubtree;
+					break;
+				}
 				case 1347: /*float8 unary exp*/
-					{
-						float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+				{
+					float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
 
-						Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * exp(x));
+					Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * exp(x));
 
-						int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
-						resultFetchIndex = stepsAfterSubtree;
-						break;
-					}
+					int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+					resultFetchIndex = stepsAfterSubtree;
+					break;
+				}
+				case 220: /* float unary minus/negation */
+				{
+					Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * (-1.0));
+					int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+					resultFetchIndex = stepsAfterSubtree;
+					break;
+				}
+				case 1600: /* float arcus sine */
+				{
+					float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+
+					float8 tmp = 1 / (sqrt(1 - x) * sqrt(1 + x));
+					Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * tmp);
+
+					int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+					resultFetchIndex = stepsAfterSubtree;
+					break;
+				}
+				case 1601: /* float arcus cosine */
+				{
+					float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+
+					float8 tmp = 1 / (sqrt(1 - x) * sqrt(1 + x));
+					Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * tmp * (-1.0));
+
+					int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+					resultFetchIndex = stepsAfterSubtree;
+					break;
+				}
+				case 1602: /* float arcus tangens */
+				{
+					float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+
+					float8 tmp = 1 / (x*x + 1);
+					Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * tmp);
+
+					int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+					resultFetchIndex = stepsAfterSubtree;
+					break;
+				}
+				case 1603: /* float arcus tangens 2 (c: atan2) */
+				{
+					float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+					float8 y = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[1]);
+
+					Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * (y/(x*x + y*y)));
+					Datum newSeedY = Float8GetDatum(DatumGetFloat8(seed) * ((-x)/(x*x + y*y)));
+
+					int startingPointForY = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedY, derivatives);
+					int stepIndexAfterX = ExecLambdaDeriveSubtree(state, startingPointForY, newSeedX, derivatives);
+					resultFetchIndex = stepIndexAfterX;
+					break;
+				}
+				case 1606: /* float tangens */
+				{
+					float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+
+					float8 tmp = 1.0 / (cos(x) * cos(x));
+					Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * tmp);
+
+					int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+					resultFetchIndex = stepsAfterSubtree;
+					break;
+				}
+				case 1607: /* float co-tangens */
+				{
+					float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+
+					float8 tmp = (-1.0) / (sin(x) * sin(x));
+					Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * tmp);
+
+					int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+					resultFetchIndex = stepsAfterSubtree;
+					break;
+				}
+				case 1339: /* float log base 10 */
+				{
+					float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+
+					float8 tmp = (1.0) / (x * log(10));
+					Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * tmp);
+
+					int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+					resultFetchIndex = stepsAfterSubtree;
+					break;
+				}
+				case 1341: /* float natural log */
+				{
+					float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+
+					Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) / x);
+
+					int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+					resultFetchIndex = stepsAfterSubtree;
+					break;
+				}
 				default:
-					{
-						ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("Derive: current operator not supported, aborting...")));
-						break;
-					}
+				{
+					ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("Derive(Interpreted): current operator not supported, aborting...")));
+					break;
+				}
 				}
 				break;
 			}
 		default:
 			{
-				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("Derive: current step-opcode not recognized, aborting...")));
+				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("Derive(Interpreted): current step-opcode not recognized, aborting...")));
 				break;
 			}
-	}
+			}
 	return resultFetchIndex;
 }
 
@@ -910,9 +1015,10 @@ ExecReadyDeriveExpr(ExprState *state)
 {
 	if (jit_compile_expr(state, true))
 		return;
-
+	
 	//set derive_func to ExecDeriveLambdaExpr 
 	state->derivefunc = (ExprStateDeriveFunc) ExecDeriveLambdaExpr;
+	ExecReadyInterpretedExpr(state);
 }
 
 /*

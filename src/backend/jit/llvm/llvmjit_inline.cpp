@@ -393,6 +393,21 @@ Datum (*llvm_prepare_simple_expression(ExprState *state))(Datum **)
 	return func;
 }
 
+/*
+ * JIT-compiles a simple lambda expression.
+ */
+Datum (*llvm_prepare_simple_expression_derivation(ExprState *state))(Datum **, Datum *)
+{
+	CompiledExprState *cstate = (CompiledExprState *)state->derivefunc_simple_private;
+	Datum (*func)(Datum **, Datum *);
+
+	llvm_enter_fatal_on_oom();
+	func = (Datum(*)(Datum **, Datum *))llvm_get_function(cstate->context,
+												 		  cstate->funcname);
+	llvm_leave_fatal_on_oom();
+	Assert(func);
+	return func;
+}
 
 /*
  * Build information necessary for inlining external function references in
