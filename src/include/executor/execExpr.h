@@ -688,7 +688,8 @@ extern ExprEvalOp ExecEvalStepOp(ExprState *state, ExprEvalStep *op);
 
 extern Datum ExecInterpExprStillValid(ExprState *state, ExprContext *econtext, bool *isNull);
 extern Datum ExecEvalLambdaExpr(ExprState *state, ExprContext *econtext, bool *isnull, int index);
-extern Datum ExecEvalSimpleLambdaExpr(Datum **args, int index); 
+extern Datum ExecEvalSimpleLambdaExpr(Datum **args, int index);
+extern Datum ExecEvalSimpleLambdaDerive(Datum **args, Datum *derivatives, int index);
 extern void CheckExprStillValid(ExprState *state, ExprContext *econtext);
 
 /*

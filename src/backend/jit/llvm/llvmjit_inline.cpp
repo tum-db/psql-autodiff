@@ -26,6 +26,7 @@ extern "C"
 }
 
 #include "jit/llvmjit.h"
+//#include <iostream>
 extern "C"
 {
 #include <fcntl.h>
@@ -152,9 +153,9 @@ class LambdaInjectionPass : public llvm::FunctionPass {
         m_context(context), m_numLambdas(numLambdas) {}
         virtual bool runOnFunction(llvm::Function &F) override;
 
-    private:
-    	LLVMJitContext* m_context;
-    	int m_numLambdas;
+	private:
+		LLVMJitContext *m_context;
+		int m_numLambdas;
 };
 
 
@@ -188,76 +189,105 @@ bool LambdaInjectionPass::runOnFunction(llvm::Function &F) {
 
 	bool changed = false;
 
-    for (llvm::BasicBlock &BB : F) {
-        for (llvm::Instruction &II : BB) {
-            llvm::Instruction *I = &II;
-            llvm::CallInst *op;
+	for (llvm::BasicBlock &BB : F)
+	{
+		for (llvm::Instruction &II : BB)
+		{
+			llvm::Instruction *I = &II;
+			llvm::CallInst *op;
 
-            if ((op = llvm::dyn_cast<llvm::CallInst>(I))
-            	&& (fn = op->getCalledFunction())) {
-            	if (fn->getName() == "ExecEvalLambdaExpr")
-            	{
-            		char *funcname;
+			if ((op = llvm::dyn_cast<llvm::CallInst>(I)) && (fn = op->getCalledFunction()))
+			{
+				if (fn->getName() == "ExecEvalLambdaExpr")
+				{
+					char *funcname;
 
-	        		int idx = -1;
+					int idx = -1;
 
-	        		if (auto argIdx = llvm::dyn_cast<llvm::ConstantInt>(op->getArgOperand(3)))
-	        		{
-	        			idx = argIdx->getSExtValue();
-	        		}
+					if (auto argIdx = llvm::dyn_cast<llvm::ConstantInt>(op->getArgOperand(3)))
+					{
+						idx = argIdx->getSExtValue();
+					}
 
-	        		if (idx < 0 || idx >= list_length(m_context->funcnames))
-	        		{
-	        			ereport(ERROR,
-						(errcode(ERRCODE_INTERNAL_ERROR),
-						 errmsg("Invalid lambda expression index passed to" \
-						 "PG_LAMBDA_INJECT. Plese give an immediate between 0 and %i.",
-						 list_length(m_context->funcnames) - 1)));
-	        		}
+					if (idx < 0 || idx >= list_length(m_context->funcnames))
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_INTERNAL_ERROR),
+								 errmsg("Invalid lambda expression index passed to"
+										"PG_LAMBDA_INJECT. Plese give an immediate between 0 and %i.",
+										list_length(m_context->funcnames) - 1)));
+					}
 
-	        		funcname = strVal(list_nth(m_context->funcnames, idx));
-	        		F.getParent()->getFunction(funcname)->addAttribute(~0U, llvm::Attribute::AlwaysInline);
-	        		op->setCalledFunction(F.getParent()->getFunction(funcname));
-	        		changed = true;
-            	}
-            	else if (fn->getName() == "ExecEvalSimpleLambdaExpr")
-            	{
-            		char *funcname = NULL;
+					funcname = strVal(list_nth(m_context->funcnames, idx));
+					F.getParent()->getFunction(funcname)->addAttribute(~0U, llvm::Attribute::AlwaysInline);
+					op->setCalledFunction(F.getParent()->getFunction(funcname));
+					changed = true;
+				}
+				else if (fn->getName() == "ExecEvalSimpleLambdaExpr")
+				{
+					char *funcname = NULL;
 					llvm::CallInst *newCall;
 
-	        		int idx = -1;
+					int idx = -1;
 
-	        		if (auto argIdx = llvm::dyn_cast<llvm::ConstantInt>(op->getArgOperand(1)))
-	        		{
-	        			idx = argIdx->getSExtValue();
-	        		}
+					if (auto argIdx = llvm::dyn_cast<llvm::ConstantInt>(op->getArgOperand(1)))
+					{
+						idx = argIdx->getSExtValue();
+					}
 
-	        		if (idx < 0 || idx >= list_length(m_context->simpleFuncnames))
-	        		{
-	        			ereport(ERROR,
-						(errcode(ERRCODE_INTERNAL_ERROR),
-						 errmsg("Invalid lambda expression index passed to" \
-						 "PG_SIMPLE_LAMBDA_INJECT. Plese give an immediate between 0 and %i.",
-						 list_length(m_context->simpleFuncnames) - 1)));
-	        		}
+					if (idx < 0 || idx >= list_length(m_context->simpleFuncnames))
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_INTERNAL_ERROR),
+								 errmsg("Invalid lambda expression index passed to"
+										"PG_SIMPLE_LAMBDA_INJECT. Plese give an immediate between 0 and %i.",
+										list_length(m_context->simpleFuncnames) - 1)));
+					}
 
-	        		funcname = strVal(list_nth(m_context->simpleFuncnames, idx));
-	        		F.getParent()->getFunction(funcname)->addAttribute(~0U, llvm::Attribute::AlwaysInline);
+					funcname = strVal(list_nth(m_context->simpleFuncnames, idx));
+					F.getParent()->getFunction(funcname)->addAttribute(~0U, llvm::Attribute::AlwaysInline);
 
-	        		newCall = llvm::CallInst::Create(F.getParent()->getFunction(funcname),
-	        			{ op->getArgOperand(0) });
-	        		replacements.push_back(std::make_pair(llvm::dyn_cast<llvm::Instruction>(op),
-	        			llvm::dyn_cast<llvm::Instruction>(newCall)));
-	        		changed = true;
-            	}
-            	
+					newCall = llvm::CallInst::Create(F.getParent()->getFunction(funcname),
+													 {op->getArgOperand(0)});
+					replacements.push_back(std::make_pair(llvm::dyn_cast<llvm::Instruction>(op),
+														  llvm::dyn_cast<llvm::Instruction>(newCall)));
+					changed = true;
+				}
+				else if (fn->getName() == "ExecEvalSimpleLambdaDerive") //for derivation
+				{
+					char *funcname = NULL;
+					llvm::CallInst *newCall;
 
-        	}
+					int idx = -1;
 
-        }
-    }
+					if (auto argIdx = llvm::dyn_cast<llvm::ConstantInt>(op->getArgOperand(2)))
+					{
+						idx = argIdx->getSExtValue();
+					}
 
-    for (auto& el : replacements)
+					if (idx < 0 || idx >= list_length(m_context->simpleFuncnames))
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_INTERNAL_ERROR),
+								 errmsg("Invalid lambda expression index passed to"
+										"PG_SIMPLE_LAMBDA_INJECT_DERIV. Please give an idx between 0 and %i.",
+										list_length(m_context->simpleFuncnames) - 1)));
+					}
+
+					funcname = strVal(list_nth(m_context->simpleFuncnames, idx));
+					F.getParent()->getFunction(funcname)->addAttribute(~0U, llvm::Attribute::AlwaysInline);
+
+					newCall = llvm::CallInst::Create(F.getParent()->getFunction(funcname),
+													 {op->getArgOperand(0), op->getArgOperand(1)});
+					replacements.push_back(std::make_pair(llvm::dyn_cast<llvm::Instruction>(op),
+														  llvm::dyn_cast<llvm::Instruction>(newCall)));
+					changed = true;
+				}
+			}
+		}
+	}
+
+	for (auto& el : replacements)
     {
     	llvm::ReplaceInstWithInst(el.first, el.second);
     }
@@ -314,6 +344,17 @@ llvm_inline(LLVMModuleRef M)
  *
  * The function returns a pointer to the ready-to-be-executed function having the
  * same signature as the C function it originates from.
+ * 
+ * EDIT:
+ * 
+ * For derivation functions, the following MACRO will be added:
+ * 
+ * [3] PG_SIMPLE_LAMBDA_DERIVE(Datum **, Datum *, int)
+ * 
+ * where the first Datum pointer pointer is the pointer to the input values, 
+ * whilst the second one is the pointer, where the result derivations
+ * should be stored after the derivation-evaluation. The int denotes the number 
+ * of the lambda function in the function call, which currently is only the one.
  */
 Datum (*llvm_prepare_lambda_tablefunc(LLVMJitContext *context,
 	char* bcModule, char* funcName, int numLambdas))(PG_FUNCTION_ARGS)
@@ -322,8 +363,7 @@ Datum (*llvm_prepare_lambda_tablefunc(LLVMJitContext *context,
 	llvm::Module* mod;
 	llvm::Function* func;
 	Datum (*funcPtr)(FunctionCallInfo);
-	auto tfMod = load_module(bcModule);	
-
+	auto tfMod = load_module(bcModule);
 
 	/* Keep a copy of the mutable module in case multiple compilations are needed */
 	if (!context->compiled)

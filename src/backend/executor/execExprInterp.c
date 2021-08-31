@@ -1852,6 +1852,27 @@ ExecEvalSimpleLambdaExpr(Datum **args, int index)
 }
 
 /*
+ * This function is just a dummy - calls to it must be replaced by a call to
+ * a JITed function which represents the simple lambda expression of a derivation.
+ * This is the job of the LambdaInjectionPass.
+ */
+Datum ExecEvalSimpleLambdaDerive(Datum **args, Datum *derivatives, int index)
+{
+	(void)args;
+	(void)index;
+	(void)derivatives;
+
+	ereport(ERROR,
+			(errcode(ERRCODE_INTERNAL_ERROR),
+			 errmsg("ExecEvalSimpleLambdaDerive was called, but this should not happen. "
+					"Please make sure that JIT is applied to the tablefunction. "
+					"To evaluate a non-JIT lambda expression, please use the "
+					"PG_LAMBDA_EVAL macro instead of PG_LAMBDA_INJECT.")));
+
+	return Int32GetDatum(0);
+}
+
+/*
  * Check that an expression is still valid in the face of potential schema
  * changes since the plan has been created.
  */
