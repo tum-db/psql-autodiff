@@ -507,6 +507,40 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 					resultFetchIndex = stepsAfterSubtree;
 					break;
 				}
+				case 7802: /* float sigmoid rectified linear unit */
+				{
+					float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+
+					float8 tmp = (1 + exp(-x) + x * exp(-x)) / ((1 + exp(-x)) * (1 + exp(-x)));
+					Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * tmp);
+
+					int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+					resultFetchIndex = stepsAfterSubtree;
+					break;
+				}
+				case 7803: /* float sigmoid */
+				{
+					float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+
+					float8 sigX = 1 / (1 + exp(-x));
+					float8 tmp = sigX * (1 - sigX);
+					Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * tmp);
+
+					int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+					resultFetchIndex = stepsAfterSubtree;
+					break;
+				}
+				case 7804: /* float tangens hyperbolicus(tanh) */
+				{
+					float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+
+					float8 tmp = 1 - tanh(x)*tanh(x);
+					Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * tmp);
+
+					int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+					resultFetchIndex = stepsAfterSubtree;
+					break;
+				}
 				default:
 				{
 					ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("Derive(Interpreted): current operator not supported, aborting...")));

@@ -98,6 +98,6 @@ language C STRICT;
 --select * from autodiff_l1_2((select x, y from nums_null), (lambda(a)(a.x + a.y))) limit 10;
 --select * from autodiff_l1_2((select x, y, z from nums),lambda(a)((a.x*a.y) + a.z/2)); 
 
-select * from autodiff_l1_2((select x, y, z from nums_label), (lambda(a)(sin(a.x) / cos(a.y)))) limit 10;
-select * from autodiff_l3(  (select x, y, z from nums_label), (lambda(a)(sin(a.x) / cos(a.y)))) limit 10;
-select * from autodiff_l4(  (select x, y, z from nums_label), (lambda(a)(sin(a.x) / cos(a.y)))) limit 10;
+select * from autodiff_l1_2((select x, y, z from nums_label), (lambda(a)(sigmoid(a.x + a.y)))) limit 10;
+--select * from autodiff_l3(  (select x, y, z from nums_label), (lambda(a)(hyptan(a.x)))) limit 10;
+--select * from autodiff_l4(  (select x, y, z from nums_label), (lambda(a)(sin(a.x) / cos(a.y)))) limit 10;

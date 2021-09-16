@@ -2021,6 +2021,69 @@ dtan(PG_FUNCTION_ARGS)
 	PG_RETURN_FLOAT8(result);
 }
 
+/*
+ *		softmax			- returns the softmax of arg1
+ */
+Datum
+	softmax(PG_FUNCTION_ARGS)
+{
+	float8 result = 3.9474747947;
+	//////////////////////////////////
+	//             TODO             //
+	//////////////////////////////////
+	PG_RETURN_FLOAT8(result);
+}
+
+/*
+ *		sigmoid			- returns the sigmoid of arg1
+ */
+Datum
+	sigmoid(PG_FUNCTION_ARGS)
+{
+	float8 arg1 = PG_GETARG_FLOAT8(0);
+	float8 result;
+
+	/* Per the POSIX spec, return NaN if the input is NaN */
+	if (isnan(arg1))
+		PG_RETURN_FLOAT8(get_float8_nan());
+
+	result = (1) / (1 + exp(-1 * arg1));
+	PG_RETURN_FLOAT8(result);
+}
+
+/*
+ *		hyptan			- returns the hyperbolic tangent of arg1 (radians)
+ */
+Datum
+	hyptan(PG_FUNCTION_ARGS)
+{
+	float8 arg1 = PG_GETARG_FLOAT8(0);
+	float8 result;
+
+	/* Per the POSIX spec, return NaN if the input is NaN */
+	if (isnan(arg1))
+		PG_RETURN_FLOAT8(get_float8_nan());
+
+	result = tanh(arg1);
+	PG_RETURN_FLOAT8(result);
+}
+
+/*
+ *		silu			- returns the sigmoidal linear unit of arg1
+ */
+Datum
+	silu(PG_FUNCTION_ARGS)
+{
+	float8 arg1 = PG_GETARG_FLOAT8(0);
+	float8 result;
+
+	/* Per the POSIX spec, return NaN if the input is NaN */
+	if (isnan(arg1))
+		PG_RETURN_FLOAT8(get_float8_nan());
+
+	result = (arg1) / (1 + exp(-1 * arg1));
+	PG_RETURN_FLOAT8(result);
+}
 
 /* ========== DEGREE-BASED TRIGONOMETRIC FUNCTIONS ========== */
 
