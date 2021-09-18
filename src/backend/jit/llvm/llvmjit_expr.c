@@ -61,9 +61,8 @@ static LLVMValueRef build_EvalCFunc(LLVMBuilderRef b, LLVMModuleRef mod,
 									const char *funcname, LLVMValueRef *params,
 									LLVMTypeRef *param_types, LLVMTypeRef rettype, int nparams);
 static LLVMValueRef create_LifetimeEnd(LLVMModuleRef mod);
-static int llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, LLVMModuleRef mod, ExprState *state,
-										   int fetchIndex, LLVMValueRef seed,
-										   LLVMValueRef derivatives);
+static int llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, LLVMModuleRef mod, ExprState *state, 
+										   int fetchIndex, LLVMValueRef seed, LLVMValueRef derivatives);
 static int llvm_compile_simple_deriv_subtree(LLVMBuilderRef b, LLVMModuleRef mod, ExprState *state,
 											 int fetchIndex, LLVMValueRef seed,
 											 LLVMValueRef derivatives, LLVMValueRef *funcVals, int *intermediates_pointer);
@@ -3436,11 +3435,11 @@ bool llvm_compile_expr_derive(ExprState *state)
 }
 
 static int
-llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, /* Builder containing the pre-built eval-func */
-                                LLVMModuleRef mod,/* The module where the build function will be stored */
-                                ExprState *state, /* State containing intermediate values for the derivations */
-								int fetchIndex,   /* The step in the op_code sequence from where to start */
-								LLVMValueRef seed,/* seed for current subtree, not a pointer */
+llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, 		/* Builder containing the pre-built eval-func */
+                                LLVMModuleRef mod,		/* The module where the build function will be stored */
+                                ExprState *state, 		/* State containing intermediate values for the derivations */
+								int fetchIndex,   		/* The step in the op_code sequence from where to start */
+								LLVMValueRef seed,		/* seed for current subtree, not a pointer */
 								LLVMValueRef derivatives) /* Datum(therefore pointer) array, containing all derivatives */
 {
 	int resultFetchIndex = fetchIndex;
@@ -3538,10 +3537,7 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, /* Builder containing the pre-
 		{
 			int startingPointY, stepAfterX;
 
-			startingPointY = llvm_compile_expr_deriv_subtree(b,
-															 mod,
-															 state,
-															 fetchIndex - 1,
+			startingPointY = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1,
 															 LLVMBuildBinOp(
 																 b,
 																 LLVMFMul,
@@ -4222,6 +4218,27 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, /* Builder containing the pre-
 			resultFetchIndex = stepsAfterSubtree;
 			break;
 		}
+		case 7805: /* float rectified linear unit(relu) */
+		{
+			LLVMValueRef newSeedX, x, factor;
+			LLVMTypeRef typeDouble;
+			int stepsAfterSubtree;
+
+			typeDouble = LLVMDoubleType();
+
+			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[0], l_ptr(TypeDatum)), ""));
+
+			factor = LLVMBuildUIToFP(b, LLVMBuildFCmp(b, LLVMRealOGT, x, l_float8_const(0.0), ""), typeDouble, "");
+			newSeedX = LLVMBuildBinOp(b,
+									  LLVMFMul,
+									  l_as_float8(b, seed),
+									  l_as_float8(b, factor),
+									  "");
+
+			stepsAfterSubtree = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives);
+			resultFetchIndex = stepsAfterSubtree;
+			break;
+		}
 		default:
 		{
 			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("Derive(L2): current operator not supported, aborting...")));
@@ -4673,6 +4690,20 @@ bool llvm_compile_simple_expr_derive(ExprState *state)
 									   LLVMBuildBinOp(b, LLVMFSub, eToX, eToMX, ""),
 									   LLVMBuildBinOp(b, LLVMFAdd, eToX, eToMX, ""),
 									   "");
+				break;
+			}
+
+			case 7805:
+			{
+				LLVMTypeRef types[2];
+				LLVMValueRef params[2];
+				numparams = 1;
+				types[0] = LLVMDoubleType();
+				types[1] = LLVMDoubleType();
+				params[0] = l_as_float8(b, registers[registerPointer - 1]);
+				params[1] = l_float8_const(0.0);
+
+				opres = build_EvalCFunc(b, mod, "fmax", (LLVMValueRef *)&params, (LLVMTypeRef *)&types, types[0], 2);
 				break;
 			}
 
@@ -5536,6 +5567,27 @@ llvm_compile_simple_deriv_subtree(LLVMBuilderRef b,			    /* Builder containing 
 									  LLVMFMul,
 									  seed,
 									  tmp,
+									  "");
+
+			stepsAfterSubtree = llvm_compile_simple_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives, funcVals, intermediates_pointer);
+			resultFetchIndex = stepsAfterSubtree;
+			break;
+		}
+		case 7805: /* float rectified linear unit(relu) */
+		{
+			LLVMValueRef newSeedX, x, factor;
+			LLVMTypeRef typeDouble;
+			int stepsAfterSubtree;
+
+			typeDouble = LLVMDoubleType();
+
+			x = l_as_float8(b, funcVals[(*intermediates_pointer)--]);
+
+			factor = LLVMBuildUIToFP(b, LLVMBuildFCmp(b, LLVMRealOGT, x, l_float8_const(0.0), ""), typeDouble, "");
+			newSeedX = LLVMBuildBinOp(b,
+									  LLVMFMul,
+									  l_as_float8(b, seed),
+									  l_as_float8(b, factor),
 									  "");
 
 			stepsAfterSubtree = llvm_compile_simple_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives, funcVals, intermediates_pointer);

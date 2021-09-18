@@ -2085,6 +2085,30 @@ Datum
 	PG_RETURN_FLOAT8(result);
 }
 
+/*
+ *		relu			- returns the rectified linear unit of arg1
+ */
+Datum
+	relu(PG_FUNCTION_ARGS)
+{
+	float8 arg1 = PG_GETARG_FLOAT8(0);
+	float8 result;
+
+	/* Per the POSIX spec, return NaN if the input is NaN */
+	if (isnan(arg1))
+		PG_RETURN_FLOAT8(get_float8_nan());
+
+	//printf("\n\nWho dares...?\n\n");
+
+	if(arg1 <= 0.0) {
+		result = 0.0;
+	} else {
+		result = arg1;
+	}
+
+	PG_RETURN_FLOAT8(result);
+}
+
 /* ========== DEGREE-BASED TRIGONOMETRIC FUNCTIONS ========== */
 
 

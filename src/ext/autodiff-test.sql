@@ -21,14 +21,14 @@ drop table if exists pages;
 
 --create new tables and fill them with usable data
 create table nums(x float not null, y float not null, z float not null, a float not null, b float not null, c float not null);
-create table nums_numeric(x numeric not null, y numeric not null);
+create table nums_numeric(x float not null, y float not null, z float not null);
 create table nums_label(x float not null, y float not null, z float not null);
 create table nums_null(x float, y float);
 create table points(x float not null, y float not null);
 create table pages(src float not null, dst float not null);
 
 insert into nums select generate_series(1, 100), generate_series(101, 200), generate_series(201, 300), generate_series(1, 100), generate_series(1, 100), generate_series(1, 100);
-insert into nums_numeric select generate_series(2, 2), generate_series(64, 64);
+insert into nums_numeric select generate_series(-2, -2), generate_series(5, 5), generate_series(12, 12);
 insert into nums_label select generate_series(2, 2), generate_series(4, 4), generate_series(5, 5);
 
 insert into nums_null select generate_series(1, 1), generate_series(2, 2);
@@ -98,6 +98,8 @@ language C STRICT;
 --select * from autodiff_l1_2((select x, y from nums_null), (lambda(a)(a.x + a.y))) limit 10;
 --select * from autodiff_l1_2((select x, y, z from nums),lambda(a)((a.x*a.y) + a.z/2)); 
 
-select * from autodiff_l1_2((select x, y, z from nums_label), (lambda(a)(sigmoid(a.x + a.y)))) limit 10;
---select * from autodiff_l3(  (select x, y, z from nums_label), (lambda(a)(hyptan(a.x)))) limit 10;
---select * from autodiff_l4(  (select x, y, z from nums_label), (lambda(a)(sin(a.x) / cos(a.y)))) limit 10;
+--set jit='off';
+select * from autodiff_l1_2((select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
+set jit='on';
+select * from autodiff_l3(  (select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
+select * from autodiff_l4(  (select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;

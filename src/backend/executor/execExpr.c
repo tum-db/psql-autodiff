@@ -507,7 +507,7 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 					resultFetchIndex = stepsAfterSubtree;
 					break;
 				}
-				case 7802: /* float sigmoid rectified linear unit */
+				case 7802: /* float sigmoid rectified linear unit(silu) */
 				{
 					float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
 
@@ -536,6 +536,21 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 
 					float8 tmp = 1 - tanh(x)*tanh(x);
 					Datum newSeedX = Float8GetDatum(DatumGetFloat8(seed) * tmp);
+
+					int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+					resultFetchIndex = stepsAfterSubtree;
+					break;
+				}
+				case 7805: /* float rectified linear unit(relu) */
+				{
+					float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+					Datum newSeedX;
+
+					if(x <= 0.0) {
+						newSeedX  = Float8GetDatum(0.0); //relu is undefined at 0, but one can make the coice to pick a number from [0,1], in this case 0
+					} else {
+						newSeedX = seed;
+					}
 
 					int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
 					resultFetchIndex = stepsAfterSubtree;
