@@ -38,6 +38,7 @@
 #include "nodes/memnodes.h"
 #include "utils/expandeddatum.h"
 #include "utils/palloc.h"
+#include "utils/array.h"
 
 
 /*
@@ -53,6 +54,7 @@ bool		TypeStorageBool;
 AggState	StructAggState;
 AggStatePerGroupData StructAggStatePerGroupData;
 AggStatePerTransData StructAggStatePerTransData;
+ArrayType StructArrayType;
 ExprContext StructExprContext;
 ExprEvalStep StructExprEvalStep;
 ExprState	StructExprState;

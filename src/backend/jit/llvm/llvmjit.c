@@ -77,6 +77,7 @@ LLVMTypeRef StructExprState;
 LLVMTypeRef StructAggState;
 LLVMTypeRef StructAggStatePerGroupData;
 LLVMTypeRef StructAggStatePerTransData;
+LLVMTypeRef StructArrayType;
 
 LLVMValueRef AttributeTemplate;
 LLVMValueRef FuncStrlen;
@@ -877,6 +878,7 @@ llvm_create_types(void)
 	StructAggState = load_type(mod, "StructAggState");
 	StructAggStatePerGroupData = load_type(mod, "StructAggStatePerGroupData");
 	StructAggStatePerTransData = load_type(mod, "StructAggStatePerTransData");
+	StructArrayType = load_type(mod, "StructArrayType");
 
 	AttributeTemplate = LLVMGetNamedFunction(mod, "AttributeTemplate");
 	FuncStrlen = LLVMGetNamedFunction(mod, "strlen");

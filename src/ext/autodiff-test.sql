@@ -17,7 +17,7 @@ drop table if exists nums_label;
 drop table if exists nums_null;
 drop table if exists points;
 drop table if exists pages;
-
+drop table if exists nums_matrix;
 
 --create new tables and fill them with usable data
 create table nums(x float not null, y float not null, z float not null, a float not null, b float not null, c float not null);
@@ -26,6 +26,7 @@ create table nums_label(x float not null, y float not null, z float not null);
 create table nums_null(x float, y float);
 create table points(x float not null, y float not null);
 create table pages(src float not null, dst float not null);
+create table nums_matrix(x float array not null, y float array not null);
 
 insert into nums select generate_series(1, 100), generate_series(101, 200), generate_series(201, 300), generate_series(1, 100), generate_series(1, 100), generate_series(1, 100);
 insert into nums_numeric select generate_series(-2, -2), generate_series(5, 5), generate_series(12, 12);
@@ -36,6 +37,8 @@ insert into nums_null select 1 as x, null as y;
 
 insert into points select generate_series(1, 100), generate_series(101, 200);
 insert into pages select generate_series(0.1, 1), generate_series(0.1, 1);
+
+insert into nums_matrix values ({{2,4}, {4,8}}, {{8,4}, {4,2}});
 
 
 --load all functions
@@ -86,7 +89,8 @@ language C STRICT;
 
 
 --test all functions and run them with their corresponding datatables
---explain analyze select * from label((select x, y from nums_label),(lambda(a)(pow(a.x, 2) * a.y + 5))) limit 10;
+set jit='off'; 
+select * from label((select x, y from nums_label),(lambda(a)(pow(a.x, 2) * a.y + 5))) limit 10;
 --select * from label_fast((select * from nums),(lambda(a)(atan2(a.x, a.y)))) limit 10;
 --select * from kmeans((select * from points),(select * from points),(lambda(a,b)(a.x + a.y - (b.x + b.y))), 10, 100) limit 10;
 --select * from kmeans_threads((select * from points),(select * from points),(lambda(a,b)(a.x + a.y - (b.x + b.y))), 10, 100) limit 10;
@@ -99,7 +103,7 @@ language C STRICT;
 --select * from autodiff_l1_2((select x, y, z from nums),lambda(a)((a.x*a.y) + a.z/2)); 
 
 --set jit='off';
-select * from autodiff_l1_2((select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
-set jit='on';
-select * from autodiff_l3(  (select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
-select * from autodiff_l4(  (select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
+--select * from autodiff_l1_2((select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
+--set jit='on';
+--select * from autodiff_l3(  (select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
+--select * from autodiff_l4(  (select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;

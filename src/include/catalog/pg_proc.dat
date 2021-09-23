@@ -624,6 +624,7 @@
   proname => 'poly_center', prorettype => 'point', proargtypes => 'polygon',
   prosrc => 'poly_center' },
 
+# OIDs from 7800 for differentiable arithmetic operators
 { oid => '7801',
   proname => 'softmax', prorettype => 'float8', proargtypes => 'float8',
   prosrc => 'softmax' },
@@ -639,6 +640,12 @@
 { oid => '7805',
   proname => 'relu', prorettype => 'float8', proargtypes => 'float8',
   prosrc => 'relu' },  
+
+# OIDs from 9000 up for Matrix operations
+{ oid => '9000',
+  proname => 'mat_mul', prorettype => '_float8 _float8', proargtypes => '_float8',
+  prosrc => 'matrix_mul' },
+
 { oid => '228', descr => 'round to nearest integer',
   proname => 'dround', prorettype => 'float8', proargtypes => 'float8',
   prosrc => 'dround' },

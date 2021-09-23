@@ -85,6 +85,8 @@ typedef struct
 	Oid			elemtype;		/* element type OID */
 } ArrayType;
 
+#define EA_MAGIC 689375833 /* ID for debugging crosschecks */
+
 /*
  * An expanded array is contained within a private memory context (as
  * all expanded objects must be) and has a control structure as below.
@@ -98,8 +100,6 @@ typedef struct
  * this situation.  Once we start modifying array elements, new pass-by-ref
  * elements are separately palloc'd within the memory context.
  */
-#define EA_MAGIC 689375833		/* ID for debugging crosschecks */
-
 typedef struct ExpandedArrayHeader
 {
 	/* Standard header for expanded objects */
@@ -447,5 +447,11 @@ extern ExpandedArrayHeader *DatumGetExpandedArrayX(Datum d,
 					   ArrayMetaState *metacache);
 extern AnyArrayType *DatumGetAnyArrayP(Datum d);
 extern void deconstruct_expanded_array(ExpandedArrayHeader *eah);
+
+/*
+ * prototypes for functions defined in matrix_ops.c
+ */
+extern Datum matrix_mul(PG_FUNCTION_ARGS);
+extern ArrayType* initResult(int ndims, int* dims, int* lbs);
 
 #endif							/* ARRAY_H */

@@ -93,6 +93,7 @@ extern LLVMTypeRef TypePGFunction;
 extern LLVMTypeRef TypeSizeT;
 extern LLVMTypeRef TypeStorageBool;
 
+extern LLVMTypeRef StructArrayType;
 extern LLVMTypeRef StructtupleDesc;
 extern LLVMTypeRef StructHeapTupleData;
 extern LLVMTypeRef StructTupleTableSlot;
