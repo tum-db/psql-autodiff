@@ -643,7 +643,7 @@
 
 # OIDs from 9000 up for Matrix operations
 { oid => '9000',
-  proname => 'mat_mul', prorettype => '_float8 _float8', proargtypes => '_float8',
+  proname => 'mat_mul', prorettype => '_float8', proargtypes => '_float8 _float8',
   prosrc => 'matrix_mul' },
 
 { oid => '228', descr => 'round to nearest integer',

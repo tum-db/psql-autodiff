@@ -132,6 +132,12 @@ typedef struct ExprState
 	 */
 	bool       load_consts_explicitly;
 	bool       fast_jit;
+
+	/*
+	 * Indicates, that EEOP_FIELDSELECT will return atleast one matrix/array
+	 * -> Only use Matrix-arithmetics during Lambda-Evaluation, espc. during differentiation
+	 */
+	bool       lambdaContainsMatrix;
 } ExprState;
 
 

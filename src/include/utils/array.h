@@ -452,6 +452,7 @@ extern void deconstruct_expanded_array(ExpandedArrayHeader *eah);
  * prototypes for functions defined in matrix_ops.c
  */
 extern Datum matrix_mul(PG_FUNCTION_ARGS);
-extern ArrayType* initResult(int ndims, int* dims, int* lbs);
+extern Datum matrix_mul_internal(Datum MatA, Datum MatB, bool transposeA, bool transposeB);
+extern ArrayType *initResult(int ndims, int *dims, int *lbs);
 
 #endif							/* ARRAY_H */
