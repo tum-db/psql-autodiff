@@ -26,7 +26,6 @@
  */
 Datum matrix_mul(PG_FUNCTION_ARGS)
 {
-    printf("matrix mul external beginning\n");
     // The formal PostgreSQL array objects:
     ArrayType *a1, *a2, *ret;
 
@@ -144,7 +143,7 @@ Datum matrix_mul(PG_FUNCTION_ARGS)
     Datum *ps2 = (Datum *)ARR_DATA_PTR(a2);
 
     Datum *ps;
-#pragma omp parallel shared(arrayContent1f, arrayContent2Tf, retContent)
+#pragma omp parallel
     {
 #pragma omp single nowait
         {
@@ -157,24 +156,20 @@ Datum matrix_mul(PG_FUNCTION_ARGS)
         for (int pos = 0; pos < length1; pos++)
         {
             arrayContent1f[pos] = (double)DatumGetFloat8(ps1[pos]);
-            //printf("Mat A at pos(%d): %lf\n", pos, arrayContent1f[pos]);
         }
 #pragma omp for nowait
         for (int pos = 0; pos < length2; pos++)
         {
             arrayContent2Tf[pos] = (double)DatumGetFloat8(ps2[pos]);
-            //printf("Mat B at pos(%d): %lf\n", pos, arrayContent2Tf[pos]);
         }
 #pragma omp for nowait
         for (int pos = 0; pos < dima*dimc; pos++)
         {
             retContent[pos] = 0.0;
-            //printf("Mat B at pos(%d): %lf\n", pos, arrayContent2Tf[pos]);
         }
-
 #pragma omp barrier
         int i, j, k;
-#pragma omp for private(i,j,k) 
+#pragma omp for
         for(i = 0; i < dima; i++) {
             for(j = 0; j < dimb; j++) {
                 for(k = 0; k < dimc; k++) {
@@ -188,23 +183,17 @@ Datum matrix_mul(PG_FUNCTION_ARGS)
         for (int i = 0; i < dima * dimc; i++)
         {
             ps[i] = Float8GetDatumFast(retContent[i]);
-            //printf("Mat C at pos(%d): %lf\n", i, retContent[i]);
         }
     }
-
     PG_RETURN_ARRAYTYPE_P(ret);
-    // int32 transposeA = PG_GETARG_INT32(2) % 2 == 0; // true for 0 and 2
-    // int32 transposeB = PG_GETARG_INT32(2) / 2 == 0; // true for 0 and 1 => (0, true, true), (1, false, true), (2, true, false), (3, false, false)
-    // return matrix_mul_internal(PG_GETARG_DATUM(0), PG_GETARG_DATUM(1), transposeA, transposeB);
 }
 
 /*
- * Fast implementation, forgoing all dimension, size and type checks, beware of undefined behaviour
+ * Fast implementation, forgoing all dimension-, size- and type-checks, beware of undefined behaviour
  * NOTICE: Expects Base ArrayType passed as Pointer(cast to Datum), with elementtype being double/float8
  *         Always returns a 2D-Matrix, even if a dimension is 1(result being a vector)
  */
 Datum matrix_mul_internal(Datum MatA, Datum MatB, const bool transposeA, const bool transposeB) {
-    printf("matrix mul internal beginning\n");
     // The formal PostgreSQL array objects:
     ArrayType *a1, *a2, *ret;
 
@@ -226,8 +215,6 @@ Datum matrix_mul_internal(Datum MatA, Datum MatB, const bool transposeA, const b
     dima = 1;
     dimb = 1;
     dimc = 1;
-
-    //printf("The dimensions(before transpose) are: \nA(%dx%d)\nB(%dx%d)\n", dim1[0], dim1[1], dim2[0], dim2[1]);
 
     if(ARR_NDIM(a1) == 2) {
         if(transposeA) 
@@ -269,8 +256,6 @@ Datum matrix_mul_internal(Datum MatA, Datum MatB, const bool transposeA, const b
         }
     }
 
-    //printf("The dimensions(with transpose) are: \nA(%dx%d)\nB(%dx%d)\nC(%dx%d)\n", dima, dimb, dimb, dimc, dima, dimc);
-
     int dims[2];
     dims[0] = dima;
     dims[1] = dimc;
@@ -300,13 +285,11 @@ Datum matrix_mul_internal(Datum MatA, Datum MatB, const bool transposeA, const b
         for (int pos = 0; pos < length1; pos++)
         {
             arrayContent1f[pos] = DatumGetFloat8(ps1[pos]);
-            //printf("Mat A at pos(%d): %lf\n", pos, arrayContent1f[pos]);
         }
 #pragma omp for nowait
         for (int pos = 0; pos < length2; pos++)
         {
             arrayContent2Tf[pos] = DatumGetFloat8(ps2[pos]);
-            //printf("Mat B at pos(%d): %lf\n", pos, arrayContent2Tf[pos]);
         }
 #pragma omp for nowait
         for (int pos = 0; pos < dima * dimc; pos++)
@@ -335,10 +318,8 @@ Datum matrix_mul_internal(Datum MatA, Datum MatB, const bool transposeA, const b
         for (int i = 0; i < dima * dimc; i++)
         {
             ps[i] = Float8GetDatumFast(retContent[i]);
-            //printf("Mat C at pos(%d): %lf\n", i, retContent[i]);
         }
     }
-    printf("matrix mul internal end\n");
     PG_RETURN_ARRAYTYPE_P(ret);
 }
 
@@ -347,16 +328,20 @@ Datum matrix_mul_internal(Datum MatA, Datum MatB, const bool transposeA, const b
  *  
  * Fast implementation, forgoing all dimension, size and type checks, beware of undefined behaviour
  * NOTICE: Expects Base ArrayType passed as Pointer(cast to Datum), with elementtype being double/float8
- *         Always returns a 2D-Matrix, even if a dimension is 1(result being a vector)
+ *         If MatA is a NullPointer, a copy of MatB will be returned 
  */
-Datum matrix_add_internal(Datum MatA, Datum MatB)
+Datum matrix_add_inplace(Datum MatA, Datum MatB)
 {
-    printf("matrix add beginning\n");
     // The formal PostgreSQL array objects:
     ArrayType *a1, *a2;
 
     // The size of each array:
     int length1;
+
+    if (DatumGetPointer(MatA) == NULL) {
+        a1 = copyArray(MatB);
+        PG_RETURN_ARRAYTYPE_P(a1);
+    }
 
     // Extract the PostgreSQL arrays from the parameters passed to this function call.
     a1 = DatumGetArrayTypeP(MatA);
@@ -373,8 +358,49 @@ Datum matrix_add_internal(Datum MatA, Datum MatB)
         ret += DatumGetFloat8(ps2[pos]);
         ps1[pos] = Float8GetDatum(ret);
     }
-
     PG_RETURN_ARRAYTYPE_P(a1);
+}
+
+/*
+ * Transpose a matrix and return transposed copy
+ */
+Datum matrix_transpose_internal(Datum MatA)
+{
+    // The formal PostgreSQL array objects:
+    ArrayType *ret, *org;
+    org = DatumGetArrayTypeP(MatA);
+
+    int dims[2], lbs[2];
+
+    // Extract the PostgreSQL arrays from the parameters passed to this function call.
+    if (ARR_NDIM(org) == 1)
+    {
+        dims[0] = 1;
+        dims[1] = ARR_DIMS(org)[0];
+        lbs[0] = 1;
+        lbs[1] = ARR_LBOUND(org)[0];
+        ret = initResult(2, dims, lbs);
+        memcpy(ARR_DATA_PTR(ret), ARR_DATA_PTR(org), ArrayGetNItems(2, dims) * ALIGNOF_DOUBLE);
+        PG_RETURN_ARRAYTYPE_P(ret);
+    }
+    dims[0] = ARR_DIMS(org)[1];
+    dims[1] = ARR_DIMS(org)[0];
+    lbs[0] = ARR_LBOUND(org)[1];
+    lbs[1] = ARR_LBOUND(org)[0];
+
+    ret = initResult(2, dims, lbs);
+    Datum *A = (Datum *)ARR_DATA_PTR(org);
+    Datum *B = (Datum *)ARR_DATA_PTR(ret);
+
+    //transpose data
+#pragma omp parallel for
+    for(int i = 0; i < dims[1]; i++){
+        for(int j = 0; j < dims[0]; j++) {
+            B[MAT_2D(j, i, dims[1])] = A[MAT_2D(i, j, dims[0])];
+        }
+    }
+
+    PG_RETURN_ARRAYTYPE_P(ret);
 }
 
 /*
@@ -394,4 +420,68 @@ ArrayType *initResult(int ndims, int *dims, int *lbs)
     memcpy(ARR_DIMS(ret), dims, ndims * sizeof(int));
     memcpy(ARR_LBOUND(ret), lbs, ndims * sizeof(int));
     return ret;
+}
+
+/*
+ * Create a new array, copy of the given Array
+ */
+ArrayType *copyArray(Datum orgArray)
+{
+    //get size and dimensions from original
+    ArrayType *original = DatumGetArrayTypeP(orgArray);
+    int ndims = ARR_NDIM(original);
+    int *dims = ARR_DIMS(original);
+    int *lbs = ARR_LBOUND(original);
+    //create new array
+    int nelems = ArrayGetNItems(ndims, dims);
+    int32 nbytes = nelems * ALIGNOF_DOUBLE;
+    nbytes += ARR_OVERHEAD_NONULLS(ndims);
+    ArrayType *ret = (ArrayType *)palloc0(nbytes);
+    SET_VARSIZE(ret, nbytes);
+    ret->ndim = ndims;
+    ret->dataoffset = 0;
+    ret->elemtype = FLOAT8OID;
+    //copy all relevant data
+    memcpy(ARR_DIMS(ret), dims, ndims * sizeof(int));
+    memcpy(ARR_LBOUND(ret), lbs, ndims * sizeof(int));
+    memcpy(ARR_DATA_PTR(ret), ARR_DATA_PTR(original), nbytes);
+    return ret;
+}
+
+/*
+ * Create a new ArrayType, either filled with a given value, or the identity matrix
+ * NOTICE: The identitymatrix will always be qudratic, but every other matrix does not have to be an can even be 1x3(vector)
+ */
+Datum createArray(int *dims, const float8 value, const bool identityMatrix){
+    ArrayType *ret;
+    int lbs[2] = {1,1};
+    ret = initResult(2, dims, lbs);
+    Datum* data = (Datum *)ARR_DATA_PTR(ret);
+    if(identityMatrix) {
+#pragma omp parallel for
+        for (int i = 0; i < dims[0]; i++)
+        {
+            for (int j = 0; j < dims[0]; j++)
+            {
+                if (i == j)
+                {
+                    data[MAT_2D(i, j, dims[0])] = Float8GetDatum(1.0);
+                }
+                else
+                {
+                    data[MAT_2D(i, j, dims[0])] = Float8GetDatum(0.0);
+                }
+            }
+        }
+    } else {
+#pragma omp parallel for
+        for (int i = 0; i < dims[0]; i++)
+        {
+            for (int j = 0; j < dims[1]; j++)
+            {
+                data[MAT_2D(i, j, dims[1])] = Float8GetDatum(value);
+            }
+        }
+    }
+    PG_RETURN_ARRAYTYPE_P(ret);
 }

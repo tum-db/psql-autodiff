@@ -453,6 +453,10 @@ extern void deconstruct_expanded_array(ExpandedArrayHeader *eah);
  */
 extern Datum matrix_mul(PG_FUNCTION_ARGS);
 extern Datum matrix_mul_internal(Datum MatA, Datum MatB, bool transposeA, bool transposeB);
+extern Datum matrix_transpose_internal(Datum MatA);
+extern Datum matrix_add_inplace(Datum MatA, Datum MatB); 
 extern ArrayType *initResult(int ndims, int *dims, int *lbs);
+extern ArrayType *copyArray(Datum orgArray);
+extern Datum createArray(int *dims, float8 value, bool identityMatrix);
 
 #endif							/* ARRAY_H */

@@ -276,15 +276,9 @@ Datum ExecDeriveLambdaExpr(ExprState *expression, ExprContext *econtext, bool *i
 	Datum result;
 	result = (expression->evalfunc(expression, econtext, isNull));
 
-	printf("Was the matrix arithmetic discovered? A:%s\n", (expression->lambdaContainsMatrix ? "yes" : "no"));
-
 	Datum seed;
 	if (expression->lambdaContainsMatrix) {
-		ArrayType *seedArray;
-		int *dims = ARR_DIMS(DatumGetArrayTypeP(result));
-		int lbs[2] = {1,1};
-		seedArray = initResult(2, dims, lbs);
-		seed = PointerGetDatum(seedArray);
+		seed = createArray(ARR_DIMS(DatumGetArrayTypeP(result)), 0.0, true);
 	} else {
 		seed = Float8GetDatum(1.0);
 	}
@@ -307,10 +301,9 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 	{
 	case 59: /*EEOP_FIELDSELECT*/
 	{
-		printf("matrix mul derivation fieldselect\n");
 		int fieldNum = state->steps[fetchIndex].d.fieldselect.fieldnum - 1;
 		if (state->lambdaContainsMatrix) {
-			derivatives[fieldNum] = matrix_add_internal(derivatives[fieldNum], seed);
+			derivatives[fieldNum] = matrix_add_inplace(derivatives[fieldNum], seed);
 		} else {
 			derivatives[fieldNum] = Float8GetDatum(DatumGetFloat8(derivatives[fieldNum]) + DatumGetFloat8(seed));
 		}
@@ -600,7 +593,6 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 		}
 		case 9000: /* array float8 matrix multiplication */
 		{
-			printf("matrix mul derivation\n");
 			Datum x = state->steps[fetchIndex].d.func.fcinfo_data->arg[0];
 			Datum y = state->steps[fetchIndex].d.func.fcinfo_data->arg[1];
 

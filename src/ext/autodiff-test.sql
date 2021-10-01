@@ -5,7 +5,6 @@ load 'llvmjit.so';
 set jit_above_cost = 0;             --enforce jit-usage
 set jit_inline_above_cost = 0;      --enforce jit-usage
 set jit_optimize_above_cost = 0;    --enforce jit-usage
-
 --set jit='off';                    --enforce no jit
 
 --drop all tables, to create new ones
@@ -22,13 +21,14 @@ create table nums(x float not null, y float not null, z float not null, a float 
 create table nums_numeric(x float not null, y float not null, z float not null);
 create table nums_label(x float not null, y float not null, z float not null);
 create table nums_null(x float, y float);
+create table nums_matrix(x double precision array not null, y double precision array not null);
 create table points(x float not null, y float not null);
 create table pages(src float not null, dst float not null);
-create table nums_matrix(x double precision array not null, y double precision array not null);
 
 insert into nums select generate_series(1, 100), generate_series(101, 200), generate_series(201, 300), generate_series(1, 100), generate_series(1, 100), generate_series(1, 100);
 insert into nums_numeric select generate_series(-2, -2), generate_series(5, 5), generate_series(12, 12);
 insert into nums_label select generate_series(2, 2), generate_series(4, 4), generate_series(5, 5);
+insert into nums_matrix values ('{{2,4}, {6,8}, {2,2}}', '{{8,4,2}, {4,2,1}}');
 
 insert into nums_null select generate_series(1, 1), generate_series(2, 2);
 insert into nums_null select 1 as x, null as y;
@@ -36,7 +36,6 @@ insert into nums_null select 1 as x, null as y;
 insert into points select generate_series(1, 100), generate_series(101, 200);
 insert into pages select generate_series(0.1, 1), generate_series(0.1, 1);
 
-insert into nums_matrix values ('{{2,4}, {6,8}}', '{{8,4}, {4,2}}');
 
 --load all functions
 create or replace function label(lambdacursor, "lambda") 
@@ -93,22 +92,19 @@ language C STRICT;
 --select * from pagerank((select * from pages), (lambda(src)(src.src)), (lambda(dst)(dst.dst)), 0.85, 0.00001, 100, 100) limit 10;
 --select * from pagerank_threads((select * from pages), (lambda(src)(src.src)), (lambda(dst)(dst.dst)), 0.85, 0.00001, 100, 100) limit 10;
 
---select * from autodiff_l1_2((select x, y, z from nums),(lambda(a)(a.x*a.x + 2 * a.y - a.z))) limit 10;
---select * from autodiff_l1_2((select x, y from nums),(lambda(a)(-atan2(a.x, a.y)))) limit 10;
---select * from autodiff_l1_2((select x, y from nums_null), (lambda(a)(a.x + a.y))) limit 10;
---select * from autodiff_l1_2((select x, y, z from nums),lambda(a)((a.x*a.y) + a.z/2)); 
-
 --set jit='off';
 --select * from autodiff_l1_2((select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
 --set jit='on';
+--select * from autodiff_l1_2((select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
 --select * from autodiff_l3(  (select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
 --select * from autodiff_l4(  (select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
 
 set jit='off';
-select * from autodiff_l1_2((select x, y from nums_matrix), (lambda(a)(mat_mul(a.x, a.y)))) limit 10;
---set jit='on';
---select * from autodiff_l3(  (select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
---select * from autodiff_l4(  (select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
+select * from autodiff_l1_2((select x, y from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, a.y), mat_mul(a.x, a.y))))) limit 10;
+set jit='on';
+select * from autodiff_l1_2((select x, y from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, a.y), mat_mul(a.x, a.y))))) limit 10;
+select * from autodiff_l3(  (select x, y from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, a.y), mat_mul(a.x, a.y))))) limit 10;
+select * from autodiff_l4(  (select x, y from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, a.y), mat_mul(a.x, a.y))))) limit 10;
 
 
 
@@ -119,13 +115,13 @@ select * from autodiff_l1_2((select x, y from nums_matrix), (lambda(a)(mat_mul(a
 
 
 
--- --A * B (4x3 * 3x2 => 4x2)
+--A * B (4x3 * 3x2 => 4x2)
 -- drop table if exists nums_matrix_0;
 -- create table nums_matrix_0(x double precision array not null, y double precision array not null);
 -- insert into nums_matrix_0 values ('{{2,4,6},{2,4,6},{2,4,6},{2,4,6}}', '{{8,4}, {4,2}, {2,1}}');
 
 -- select x, y from nums_matrix_0;
--- select * from mat_mul((select x from nums_matrix_0), (select y from nums_matrix_0), 3);
+-- select * from mat_mul((select x from nums_matrix_0), (select y from nums_matrix_0));
 
 -- --A_t * B (3x4 * 3x2 => 4x2)
 -- drop table if exists nums_matrix_1;

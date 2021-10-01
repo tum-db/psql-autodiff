@@ -3278,7 +3278,29 @@ bool llvm_compile_expr_derive(ExprState *state)
 
 			LLVMBuildStore(b, v_tmpisnull, v_isnullp);
 
-			v_seed = l_float8_const(1.0);
+			if(state->lambdaContainsMatrix) {
+				LLVMValueRef params[3], res_array_ptr;
+				LLVMTypeRef types[3];
+
+				res_array_ptr = LLVMBuildAdd(b, l_as_int8(b, v_tmpvalue), l_int64_const(sizeof(ArrayType)), "");
+
+				types[0] = l_ptr(LLVMInt32Type());
+				types[1] = LLVMDoubleType();
+				types[2] = TypeParamBool;
+
+				params[0] = res_array_ptr;
+				params[1] = l_float8_const(0.0);
+				params[2] = l_pbool_const(true);
+
+				v_seed = build_EvalCFunc(b, mod, "createArray", 
+										 (LLVMValueRef *)&params,
+										 (LLVMTypeRef *)&types,
+										 TypeDatum,
+										 3);
+				//v_seed = l_float8_const(1.0);
+			} else {
+				v_seed = l_float8_const(1.0);
+			}
 
 			llvm_compile_expr_deriv_subtree(b, mod, state, state->steps_len - 2, v_seed, v_derivatives);
 
@@ -3456,10 +3478,24 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, 		/* Builder containing the pr
 									  derivatives,
 									  &v_tmpfieldnum,
 									  1, "");
-		v_tmpderivative = LLVMBuildBinOp(b, LLVMFAdd,
-										 l_as_float8(b, seed),
-										 l_as_float8(b, LLVMBuildLoad(b, v_derivative_p, "")),
-										 "");
+		if(state->lambdaContainsMatrix) {
+			LLVMValueRef matrix_add_params[2];
+			LLVMTypeRef matrix_add_types[2];
+
+			matrix_add_params[0] = LLVMBuildLoad(b, v_derivative_p, "");
+			matrix_add_params[1] = seed;
+
+			matrix_add_types[0] = TypeDatum;
+			matrix_add_types[1] = TypeDatum;
+
+			v_tmpderivative = build_EvalCFunc(b, mod, "matrix_add_inplace", (LLVMValueRef *)&matrix_add_params,
+											  (LLVMTypeRef *)&matrix_add_types, TypeDatum, 2);
+		} else {
+			v_tmpderivative = LLVMBuildBinOp(b, LLVMFAdd,
+											 l_as_float8(b, seed),
+											 l_as_float8(b, LLVMBuildLoad(b, v_derivative_p, "")),
+											 "");
+		}
 		LLVMBuildStore(b, v_tmpderivative, v_derivative_p);
 		resultFetchIndex = fetchIndex - 2;
 		break;
@@ -4239,6 +4275,43 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, 		/* Builder containing the pr
 			resultFetchIndex = stepsAfterSubtree;
 			break;
 		}
+		case 9000: /* Matrix multiplication */
+		{
+			LLVMValueRef x, y, newSeedX, newSeedY, mat_mul_params_x[4], mat_mul_params_y[4];
+			LLVMTypeRef mat_mul_types_x[4], mat_mul_types_y[4];
+			int startingPointForY, stepIndexAfterX;
+
+			x = LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[0], l_ptr(TypeDatum)), "");
+			y = LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[1], l_ptr(TypeDatum)), "");
+
+			mat_mul_params_x[0] = seed;
+			mat_mul_params_x[1] = y;
+			mat_mul_params_x[2] = l_pbool_const(false);
+			mat_mul_params_x[3] = l_pbool_const(true);
+
+			mat_mul_params_y[0] = seed;
+			mat_mul_params_y[1] = x;
+			mat_mul_params_y[2] = l_pbool_const(true);
+			mat_mul_params_y[3] = l_pbool_const(false);
+
+			mat_mul_types_x[0] = TypeDatum;
+			mat_mul_types_x[1] = TypeDatum;
+			mat_mul_types_x[2] = TypeParamBool;
+			mat_mul_types_x[3] = TypeParamBool;
+
+			mat_mul_types_y[0] = TypeDatum;
+			mat_mul_types_y[1] = TypeDatum;
+			mat_mul_types_y[2] = TypeParamBool;
+			mat_mul_types_y[3] = TypeParamBool;
+
+			newSeedX = build_EvalCFunc(b, mod, "matrix_mul_internal", (LLVMValueRef *)&mat_mul_params_x, (LLVMTypeRef *)&mat_mul_types_x, TypeDatum, 4);
+			newSeedY = build_EvalCFunc(b, mod, "matrix_mul_internal", (LLVMValueRef *)&mat_mul_params_y, (LLVMTypeRef *)&mat_mul_types_y, TypeDatum, 4);
+
+			startingPointForY = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedY, derivatives);
+			stepIndexAfterX = llvm_compile_expr_deriv_subtree(b, mod, state, startingPointForY, newSeedX, derivatives);
+			resultFetchIndex = stepIndexAfterX;
+			break;
+		}
 		default:
 		{
 			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("Derive(L2): current operator not supported, aborting...")));
@@ -4311,8 +4384,8 @@ bool llvm_compile_simple_expr_derive(ExprState *state)
 	{
 		LLVMTypeRef param_types[2];
 
-		param_types[0] = l_ptr(l_ptr(TypeDatum)); /* function parameters */
-		param_types[1] = l_ptr(TypeDatum); /* function parameters */
+		param_types[0] = l_ptr(l_ptr(TypeDatum));	/* function parameters, inputs */
+		param_types[1] = l_ptr(TypeDatum); 			/* function parameters, derivatives */
 
 		eval_sig = LLVMFunctionType(TypeDatum,
 									param_types, lengthof(param_types),
@@ -4353,12 +4426,37 @@ bool llvm_compile_simple_expr_derive(ExprState *state)
 		case EEOP_DONE:
 		{
 			LLVMValueRef seed;
-			seed = l_float8_const(1.0);
+			if (state->lambdaContainsMatrix)
+			{
+				LLVMValueRef params[3], res_array_ptr;
+				LLVMTypeRef types[3];
+
+				res_array_ptr = LLVMBuildAdd(b, l_as_int8(b, registers[registerPointer - 1]), l_int64_const(sizeof(ArrayType)), "");
+
+				types[0] = l_ptr(LLVMInt32Type());
+				types[1] = LLVMDoubleType();
+				types[2] = TypeParamBool;
+
+				params[0] = res_array_ptr;
+				params[1] = l_float8_const(0.0);
+				params[2] = l_pbool_const(true);
+
+				seed = build_EvalCFunc(b, mod, "createArray",
+										 (LLVMValueRef *)&params,
+										 (LLVMTypeRef *)&types,
+										 TypeDatum,
+										 3);
+			}
+			else
+			{
+				seed = l_float8_const(1.0);
+			}
 
 			funcInputPointer--;
 			llvm_compile_simple_deriv_subtree(b, mod, state, state->steps_len - 2, seed, v_derivatives, intermediate_vals, &funcInputPointer);
 
 			LLVMBuildRet(b, LLVMBuildZExtOrBitCast(b, registers[registerPointer - 1], TypeDatum, ""));
+
 			break;
 		}
 
@@ -4707,6 +4805,24 @@ bool llvm_compile_simple_expr_derive(ExprState *state)
 				break;
 			}
 
+			case 9000:
+			{
+				LLVMTypeRef types[4];
+				LLVMValueRef params[4];
+				numparams = 2;
+				types[0] = TypeDatum;
+				types[1] = TypeDatum;
+				types[2] = TypeParamBool;
+				types[3] = TypeParamBool;
+				params[0] = registers[registerPointer - 2];
+				params[1] = registers[registerPointer - 1];
+				params[2] = l_pbool_const(false);
+				params[3] = l_pbool_const(false);
+
+				opres = build_EvalCFunc(b, mod, "matrix_mul_internal", (LLVMValueRef *)&params, (LLVMTypeRef *)&types, TypeDatum, 4);
+				break;
+			}
+
 			default:
 				ereport(ERROR,
 						(errcode(ERRCODE_INTERNAL_ERROR),
@@ -4715,11 +4831,26 @@ bool llvm_compile_simple_expr_derive(ExprState *state)
 			}
 
 			
-			if (numparams == 2) {
-				intermediate_vals[funcInputPointer++] = l_as_float8(b, registers[registerPointer - 2]);
-				intermediate_vals[funcInputPointer++] = l_as_float8(b, registers[registerPointer - 1]);
+			if(state->lambdaContainsMatrix) {
+				if (numparams == 2)
+				{
+					intermediate_vals[funcInputPointer++] = registers[registerPointer - 2];
+					intermediate_vals[funcInputPointer++] = registers[registerPointer - 1];
+				}
+				else
+				{
+					intermediate_vals[funcInputPointer++] = registers[registerPointer - 1];
+				}
 			} else {
-				intermediate_vals[funcInputPointer++] = l_as_float8(b, registers[registerPointer - 1]);
+				if (numparams == 2)
+				{
+					intermediate_vals[funcInputPointer++] = l_as_float8(b, registers[registerPointer - 2]);
+					intermediate_vals[funcInputPointer++] = l_as_float8(b, registers[registerPointer - 1]);
+				}
+				else
+				{
+					intermediate_vals[funcInputPointer++] = l_as_float8(b, registers[registerPointer - 1]);
+				}
 			}
 
 			registerPointer -= numparams;
@@ -4793,19 +4924,36 @@ llvm_compile_simple_deriv_subtree(LLVMBuilderRef b,			    /* Builder containing 
 	{
 	case 59: /*EEOP_FIELDSELECT*/
 	{
-		LLVMValueRef v_derivative_p,		    /* The pointer into the derivatives array */
-			v_tmpfieldnum,		   				/* The fieldNum parameter of the Fieldselect */
-			v_tmpderivative;	   				/* The value behind the datum-pointer */
+		LLVMValueRef v_derivative_p, /* The pointer into the derivatives array */
+			v_tmpfieldnum,			 /* The fieldNum parameter of the Fieldselect */
+			v_tmpderivative;		 /* The value behind the datum-pointer */
 
 		v_tmpfieldnum = l_int32_const(state->steps[fetchIndex].d.fieldselect.fieldnum - 1);
 		v_derivative_p = LLVMBuildGEP(b,
 									  derivatives,
 									  &v_tmpfieldnum,
 									  1, "");
-		v_tmpderivative = LLVMBuildBinOp(b, LLVMFAdd,
-										 l_as_float8(b, seed),
-										 l_as_float8(b, LLVMBuildLoad(b, v_derivative_p, "")),
-										 "");
+		if (state->lambdaContainsMatrix)
+		{
+			LLVMValueRef matrix_add_params[2];
+			LLVMTypeRef matrix_add_types[2];
+
+			matrix_add_params[0] = LLVMBuildLoad(b, v_derivative_p, "");
+			matrix_add_params[1] = seed;
+
+			matrix_add_types[0] = TypeDatum;
+			matrix_add_types[1] = TypeDatum;
+
+			v_tmpderivative = build_EvalCFunc(b, mod, "matrix_add_inplace", (LLVMValueRef *)&matrix_add_params,
+											  (LLVMTypeRef *)&matrix_add_types, TypeDatum, 2);
+		}
+		else
+		{
+			v_tmpderivative = LLVMBuildBinOp(b, LLVMFAdd,
+											 l_as_float8(b, seed),
+											 l_as_float8(b, LLVMBuildLoad(b, v_derivative_p, "")),
+											 "");
+		}
 		LLVMBuildStore(b, v_tmpderivative, v_derivative_p);
 		resultFetchIndex = fetchIndex - 2;
 		break;
@@ -5592,6 +5740,43 @@ llvm_compile_simple_deriv_subtree(LLVMBuilderRef b,			    /* Builder containing 
 
 			stepsAfterSubtree = llvm_compile_simple_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives, funcVals, intermediates_pointer);
 			resultFetchIndex = stepsAfterSubtree;
+			break;
+		}
+		case 9000: /* Matrix multiplication */
+		{
+			LLVMValueRef x, y, newSeedX, newSeedY, mat_mul_params_x[4], mat_mul_params_y[4];
+			LLVMTypeRef mat_mul_types_x[4], mat_mul_types_y[4];
+			int startingPointY, stepAfterX;
+
+			y = funcVals[(*intermediates_pointer)--];
+			x = funcVals[(*intermediates_pointer)--];
+
+			mat_mul_params_x[0] = seed;
+			mat_mul_params_x[1] = y;
+			mat_mul_params_x[2] = l_pbool_const(false);
+			mat_mul_params_x[3] = l_pbool_const(true);
+
+			mat_mul_params_y[0] = seed;
+			mat_mul_params_y[1] = x;
+			mat_mul_params_y[2] = l_pbool_const(true);
+			mat_mul_params_y[3] = l_pbool_const(false);
+
+			mat_mul_types_x[0] = TypeDatum;
+			mat_mul_types_x[1] = TypeDatum;
+			mat_mul_types_x[2] = TypeParamBool;
+			mat_mul_types_x[3] = TypeParamBool;
+
+			mat_mul_types_y[0] = TypeDatum;
+			mat_mul_types_y[1] = TypeDatum;
+			mat_mul_types_y[2] = TypeParamBool;
+			mat_mul_types_y[3] = TypeParamBool;
+
+			newSeedX = build_EvalCFunc(b, mod, "matrix_mul_internal", (LLVMValueRef *)&mat_mul_params_x, (LLVMTypeRef *)&mat_mul_types_x, TypeDatum, 4);
+			newSeedY = build_EvalCFunc(b, mod, "matrix_mul_internal", (LLVMValueRef *)&mat_mul_params_y, (LLVMTypeRef *)&mat_mul_types_y, TypeDatum, 4);
+
+			startingPointY = llvm_compile_simple_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedY, derivatives, funcVals, intermediates_pointer);
+			stepAfterX = llvm_compile_simple_deriv_subtree(b, mod, state, startingPointY, newSeedX, derivatives, funcVals, intermediates_pointer);
+			resultFetchIndex = stepAfterX;
 			break;
 		}
 		default:
