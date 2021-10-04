@@ -44,4 +44,5 @@ lib*.pc
 /tmp_install/
 /install/
 /src/tools/
-/src/ext/softmax_cross_entropy_loss.cpp
+/src/ext/softmax_cel.cpp
+/.vscode/
