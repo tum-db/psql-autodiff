@@ -967,7 +967,7 @@ markRTEForSelectPriv(ParseState *pstate, RangeTblEntry *rte,
 			}
 			else
 				elog(ERROR, "unrecognized node type: %d",
-					 (int) nodeTag(j->rarg));
+					 (int)nodeTag(j->rarg));
 		}
 		else
 		{

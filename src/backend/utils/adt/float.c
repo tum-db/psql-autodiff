@@ -2022,19 +2022,6 @@ dtan(PG_FUNCTION_ARGS)
 }
 
 /*
- *		softmax			- returns the softmax of arg1
- */
-Datum
-	softmax(PG_FUNCTION_ARGS)
-{
-	float8 result = 3.9474747947;
-	//////////////////////////////////
-	//             TODO             //
-	//////////////////////////////////
-	PG_RETURN_FLOAT8(result);
-}
-
-/*
  *		sigmoid			- returns the sigmoid of arg1
  */
 Datum

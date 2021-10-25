@@ -282,6 +282,7 @@ Datum ExecDeriveLambdaExpr(ExprState *expression, ExprContext *econtext, bool *i
 	} else {
 		seed = Float8GetDatum(1.0);
 	}
+
 	//reverse through steps to derive each var
 	ExecLambdaDeriveSubtree(expression, expression->steps_len - 2, seed, derivatives);
 
@@ -537,6 +538,17 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 
 			int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
 			resultFetchIndex = stepsAfterSubtree;
+			break;
+		}
+		case 7801: /* float softmax_ce */
+		{
+			Datum x = state->steps[fetchIndex].d.func.fcinfo_data->arg[0];
+			Datum y = state->steps[fetchIndex].d.func.fcinfo_data->arg[1];
+
+			Datum newSeedX = softmax_cce_derive(x, y);
+
+			int stepIndexAfterX = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+			resultFetchIndex = stepIndexAfterX;
 			break;
 		}
 		case 7802: /* float sigmoid rectified linear unit(silu) */

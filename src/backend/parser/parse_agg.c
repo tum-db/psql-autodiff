@@ -1196,12 +1196,13 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
 	/*
 	 * Per spec, aggregates can't appear in a recursive term.
 	 */
-	if (pstate->p_hasAggs && hasSelfRefRTEs)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_RECURSION),
-				 errmsg("aggregate functions are not allowed in a recursive query's recursive term"),
-				 parser_errposition(pstate,
-									locate_agg_of_level((Node *) qry, 0))));
+	/* HERE CLEMENS CHANGED SOMETHING */
+	// if (pstate->p_hasAggs && hasSelfRefRTEs)
+	// 	ereport(ERROR,
+	// 			(errcode(ERRCODE_INVALID_RECURSION),
+	// 			 errmsg("aggregate functions are not allowed in a recursive query's recursive term"),
+	// 			 parser_errposition(pstate,
+	// 								locate_agg_of_level((Node *) qry, 0))));
 }
 
 /*

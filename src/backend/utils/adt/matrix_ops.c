@@ -19,6 +19,8 @@
 #include "utils/memutils.h"
 #include "utils/lsyscache.h"
 
+#include <math.h>
+
 #define MAT_2D(X,Y,ROW_SIZE) (X*ROW_SIZE+Y)
 
 /*
@@ -401,6 +403,115 @@ Datum matrix_transpose_internal(Datum MatA)
     }
 
     PG_RETURN_ARRAYTYPE_P(ret);
+}
+
+/*
+ *		softmax			- returns the softmax_cce of arg1 as inputs and arg2 as labels(one_hot)
+ */
+inline Datum softmax_cce(PG_FUNCTION_ARGS)
+{
+    return softmax_cce_internal(PG_GETARG_DATUM(0), PG_GETARG_DATUM(1));
+}
+
+/*
+ *		softmax, returns the softmax_cce loss of arg1 as inputs and arg2 as labels(one_hot)
+ */
+Datum softmax_cce_internal(Datum inputs_in, Datum labels_in)
+{
+    ArrayType *input, *labels;
+    input = DatumGetArrayTypeP(inputs_in);
+    labels = DatumGetArrayTypeP(labels_in);
+    float8 max, sum = 0.0;
+    float8 *data = (float8 *)ARR_DATA_PTR(input);
+    float8 *label_data = (float8 *)ARR_DATA_PTR(labels);
+
+    int length = ArrayGetNItems(ARR_NDIM(input), ARR_DIMS(input));
+    if (length != ArrayGetNItems(ARR_NDIM(labels), ARR_DIMS(labels)))
+    {
+        ereport(ERROR, (errmsg("Softmax: Vectors *labels* and *input* do not match!")));
+    }
+    float8 *result = (float8 *)palloc0(length * sizeof(float8));
+
+    max = data[0];
+    for (int i = 0; i < length; i++)
+    {
+        if ((max < data[i]))
+        {
+            max = data[i];
+        }
+    }
+#pragma omp parallel for
+    for (int i = 0; i < length; i++)
+    {
+        result[i] = data[i] - max;
+    }
+#pragma omp barrier
+    for (int i = 0; i < length; i++)
+    {
+        sum += exp(result[i]);
+    }
+#pragma omp parallel for
+    for (int i = 0; i < length; i++)
+    {
+        result[i] -= log(sum);
+        result[i] *= label_data[i];
+    }
+#pragma omp barrier
+    sum = 0.0;
+    for(int i = 0; i < length; i++)
+    {
+        sum += result[i];
+    }
+    PG_RETURN_FLOAT8(sum);
+}
+
+/*
+ *		softmax_der:			
+ *      returns the derivative of the softmax function w.r.t. x(input 1)
+ */
+Datum softmax_cce_derive(Datum inputs_in, Datum labels_in)
+{
+    ArrayType *input_arr, *labels_arr, *result_arr;
+    input_arr = DatumGetArrayTypeP(inputs_in);
+    labels_arr = DatumGetArrayTypeP(labels_in);
+    float8 max, sum = 0.0;
+    float8 *input = (float8 *)ARR_DATA_PTR(input_arr);
+    float8 *labels = (float8 *)ARR_DATA_PTR(labels_arr);
+
+    int length = ArrayGetNItems(ARR_NDIM(input_arr), ARR_DIMS(input_arr));
+    if (length != ArrayGetNItems(ARR_NDIM(labels_arr), ARR_DIMS(labels_arr)))
+    {
+        ereport(ERROR, (errmsg("Softmax derivation: Vectors *labels* and *input* do not match!")));
+    }
+    result_arr = initResult(ARR_NDIM(input_arr), ARR_DIMS(input_arr), ARR_LBOUND(input_arr));
+    float8 *result = (float8 *)ARR_DATA_PTR(result_arr);
+
+    max = input[0];
+    for (int i = 0; i < length; i++)
+    {
+        if (max < input[i])
+        {
+            max = input[i];
+        }
+    }
+#pragma omp parallel for
+    for (int i = 0; i < length; i++)
+    {
+        result[i] = input[i] - max;
+    }
+#pragma omp barrier
+    for (int i = 0; i < length; i++)
+    {
+        sum += exp(result[i]);
+    }
+#pragma omp parallel for
+    for (int i = 0; i < length; i++)
+    {
+        result[i] -= log(sum);
+        result[i] = exp(result[i]);
+        result[i] -= labels[i];
+    }
+    PG_RETURN_ARRAYTYPE_P(result_arr);
 }
 
 /*

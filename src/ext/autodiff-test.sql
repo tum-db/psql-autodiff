@@ -5,7 +5,7 @@ load 'llvmjit.so';
 set jit_above_cost = 0;             --enforce jit-usage
 set jit_inline_above_cost = 0;      --enforce jit-usage
 set jit_optimize_above_cost = 0;    --enforce jit-usage
---set jit='off';                    --enforce no jit
+set jit='off';                    --enforce no jit
 
 --drop all tables, to create new ones
 drop table if exists nums;
@@ -68,7 +68,7 @@ returns setof record
 as '/home/clemens/masterarbeit/psql-autodiff/src/ext/pagerank_ext.so','pagerank_threads'
 language C STRICT;
 
-create or replace function autodiff_l1_2(lambdacursor, "lambda")
+create or replace function autodiff_l1_2(lambdatable, "lambda")
 returns setof record
 as '/home/clemens/masterarbeit/psql-autodiff/src/ext/autodiff_ext.so','autodiff_l1_2'
 language C STRICT;
@@ -92,28 +92,65 @@ language C STRICT;
 --select * from pagerank((select * from pages), (lambda(src)(src.src)), (lambda(dst)(dst.dst)), 0.85, 0.00001, 100, 100) limit 10;
 --select * from pagerank_threads((select * from pages), (lambda(src)(src.src)), (lambda(dst)(dst.dst)), 0.85, 0.00001, 100, 100) limit 10;
 
---set jit='off';
---select * from autodiff_l1_2((select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
+-- set jit='off';
+-- select * from autodiff_l1_2((select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
 --set jit='on';
 --select * from autodiff_l1_2((select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
 --select * from autodiff_l3(  (select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
 --select * from autodiff_l4(  (select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
 
-set jit='off';
-select * from autodiff_l1_2((select x, y from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, a.y), mat_mul(a.x, a.y))))) limit 10;
-set jit='on';
-select * from autodiff_l1_2((select x, y from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, a.y), mat_mul(a.x, a.y))))) limit 10;
-select * from autodiff_l3(  (select x, y from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, a.y), mat_mul(a.x, a.y))))) limit 10;
-select * from autodiff_l4(  (select x, y from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, a.y), mat_mul(a.x, a.y))))) limit 10;
+-- set jit='off';
+-- select * from autodiff_l1_2((select x, y from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, a.y), mat_mul(a.x, a.y))))) limit 10;
+--set jit='on';
+--select * from autodiff_l1_2((select x, y from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, a.y), mat_mul(a.x, a.y))))) limit 10;
+--select * from autodiff_l3(  (select x, y from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, a.y), mat_mul(a.x, a.y))))) limit 10;
+--select * from autodiff_l4(  (select x, y from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, a.y), mat_mul(a.x, a.y))))) limit 10;
 
 
 
 
+-- TESTS FOR GRADIENT DESCENT PURE PL/PGSQL-IMPLEMENTATIONS
 
 
+drop table if exists data;
+create table data (x1 float, x2 float, x3 float, x4 float, x5 float, x6 float, x7 float, x8 float, y1 float, y2 float, y3 float, y4 float, y5 float, y6 float, y7 float, y8 float, mynull float);
+insert into data (select *,0.5+0.8*x1,0.5+0.8*x1+0.8*x2,0.5+0.8*x1+0.8*x2+0.8*x3,0.5+0.8*x1+0.8*x2+0.8*x3+0.8*x4,0.5+0.8*x1+0.8*x2+0.8*x3+0.8*x4+0.8*x5,0.5+0.8*x1+0.8*x2+0.8*x3+0.8*x4+0.8*x5+0.8*x6,0.5+0.8*x1+0.8*x2+0.8*x3+0.8*x4+0.8*x5+0.8*x6+0.8*x7,0.5+0.8*x1+0.8*x2+0.8*x3+0.8*x4+0.8*x5+0.8*x6+0.8*x7+0.8*x8 from (select random() x1, random() x2, random() x3, random() x4, random() x5, random() x6, random() x7, random() x8, 0 from generate_series(1,10000)) as my_alias_1);
+-- 
+-- drop table if exists gd;
+-- create table gd(id integer, a1 float, a2 float, b float);
+-- insert into gd values (1, 1::float, 1::float, 1::float);
 
+-- \timing on
 
+-- set jit='off';
 
+-- do $$
+-- begin
+--    for counter in 1..50 loop
+--       insert into gd (id, a1, a2, b) 
+--                      (select (id + 1)::integer as id,
+--                              (a1- 0.001 * avg(d_a1))::float as a1,
+--                              (a2- 0.001 * avg(d_a2))::float as a2,
+--                              (b - 0.001 * avg(d_b))::float as b
+--                       from autodiff_l1_2((select * from gd, (select * from data limit 10) as my_alias_2 where id = counter), 
+--                                          (lambda(x)((x.a1*x.x1 + x.a2*x.x2 + x.b-x.y2)^2)))
+--                       --as (id integer, a1 float, a2 float, b float, result float, d_a1 float, d_a2 float, d_b float)
+--                       group by id, a1, a2, b);
+--    end loop;
+-- end$$;
+
+-- with recursive gd as (
+-- 	select 1, 1::float, 1::float, 1::float
+-- union all
+--     select (id + 1)::integer as id,
+--            (a1- 0.001 * avg(d_a1))::float as a1,
+--            (a2- 0.001 * avg(d_a2))::float as a2,
+--            (b - 0.001 * avg(d_b))::float as b
+--     from autodiff_l1_2((select * from gd, (select * from data limit 10) as my_alias_2 where id < 5), 
+--                        (lambda(x)((x.a1*x.x1 + x.a2*x.x2 + x.b-x.y2)^2)))
+--     group by id, a1, a2, b
+-- )
+-- select * from gd;
 
 --A * B (4x3 * 3x2 => 4x2)
 -- drop table if exists nums_matrix_0;
@@ -146,3 +183,25 @@ select * from autodiff_l4(  (select x, y from nums_matrix), (lambda(a)(mat_mul(m
 
 -- select x, y from nums_matrix_3;
 -- select * from mat_mul((select x from nums_matrix_3), (select y from nums_matrix_3), 0);
+
+-- with recursive gd(id, a1, b) as (
+-- 	select 1, 1::float, 1::float
+-- union all
+-- 	select id+1,
+-- 			a1 - 0.001*avg(2*x1*( a1*x1 + b-y1)),
+-- 			b-0.001*avg(2*( a1*x1 + b-y1))
+-- 	from gd, (select * from data limit 10) as pg_alias where id <= 5 group by id, a1, b
+-- ) select * from gd where id = 5;
+
+with recursive gd as (
+	select 1, 1::float, 1::float, 1::float
+union all
+    select (id + 1)::integer as id,
+           (a1- 0.001 * avg(d_a1))::float as a1,
+           (a2- 0.001 * avg(d_a2))::float as a2,
+           (b - 0.001 * avg(d_b))::float as b
+    from autodiff_l1_2((select * from gd, (select * from data limit 10) as my_alias_2 where id <= 5), 
+                       (lambda(x)((x.a1*x.x1 + x.a2*x.x2 + x.b-x.y2)^2)))
+    group by id, a1, a2, b
+)
+select * from gd;

@@ -4118,6 +4118,27 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, 		/* Builder containing the pr
 			resultFetchIndex = stepsAfterSubtree;
 			break;
 		}
+		case 7801: /* softmax */ 
+		{
+			LLVMValueRef x, y, newSeedX, softmax_params[2];
+			LLVMTypeRef softmax_types[2];
+			int stepIndexAfterX;
+
+			x = LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[0], l_ptr(TypeDatum)), "");
+			y = LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[1], l_ptr(TypeDatum)), "");
+
+			softmax_params[0] = seed;
+			softmax_params[1] = y;
+
+			softmax_types[0] = TypeDatum;
+			softmax_types[1] = TypeDatum;
+
+			newSeedX = build_EvalCFunc(b, mod, "softmax_cce_derive", (LLVMValueRef *)&softmax_params, (LLVMTypeRef *)&softmax_types, TypeDatum, 2);
+
+			stepIndexAfterX = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives);
+			resultFetchIndex = stepIndexAfterX;
+			break;
+		}
 		case 7802: /* float sigmoidial rectified linear unit */
 		{
 			LLVMValueRef x, newSeedX, tmp, params[1], eToMX;
@@ -4716,6 +4737,20 @@ bool llvm_compile_simple_expr_derive(ExprState *state)
 				params[1] = l_as_float8(b, registers[registerPointer - 1]);
 
 				opres = build_EvalCFunc(b, mod, "atan2", (LLVMValueRef *)&params, (LLVMTypeRef *)&types, types[0], 2);
+				break;
+			}
+
+			case 7801:
+			{
+				LLVMTypeRef types[2];
+				LLVMValueRef params[2];
+				numparams = 2;
+				types[0] = TypeDatum;
+				types[1] = TypeDatum;
+				params[0] = registers[registerPointer - 2];
+				params[1] = registers[registerPointer - 1];
+
+				opres = build_EvalCFunc(b, mod, "softmax_cce_internal", (LLVMValueRef *)&params, (LLVMTypeRef *)&types, TypeDatum, 2);
 				break;
 			}
 
@@ -5583,6 +5618,26 @@ llvm_compile_simple_deriv_subtree(LLVMBuilderRef b,			    /* Builder containing 
 
 			stepsAfterSubtree = llvm_compile_simple_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives, funcVals, intermediates_pointer);
 			resultFetchIndex = stepsAfterSubtree;
+			break;
+		}
+		case 7801: /* Softmax_CCE */
+		{
+			LLVMValueRef x, y, newSeedX, params_softmax[2];
+			LLVMTypeRef types_softmax[2];
+			int stepAfterX;
+			x = funcVals[(*intermediates_pointer)--];
+			y = funcVals[(*intermediates_pointer)--];
+
+			params_softmax[0] = seed;
+			params_softmax[1] = x;
+
+			types_softmax[0] = TypeDatum;
+			types_softmax[1] = TypeDatum;
+
+			newSeedX = build_EvalCFunc(b, mod, "softmax_cce_derive", (LLVMValueRef *)&params_softmax, (LLVMTypeRef *)&types_softmax, TypeDatum, 2);
+
+			stepAfterX = llvm_compile_simple_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives, funcVals, intermediates_pointer);
+			resultFetchIndex = stepAfterX;
 			break;
 		}
 		case 7802: /* float sigmoidial rectified linear unit */
