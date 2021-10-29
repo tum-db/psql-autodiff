@@ -121,42 +121,6 @@ Datum
             hdr = t->t_data;
         }
 
-        // {
-        //     ExprState *state = castNode(ExprState, lambda->exprstate);
-        //     bool matrixUsed = false;
-        //     int selections[5][5] = {0}; 
-
-
-        //     for (int idxC = 0; idxC < state->steps_len; idxC++)
-        //     {
-        //         printf("STEP_OID: %u\n", ExecEvalStepOp(state, &(state->steps[idxC])));
-        //         if (ExecEvalStepOp(state, &(state->steps[idxC])) == 18)
-        //         {
-        //             printf("FN_OID: %u\n", state->steps[idxC].d.func.finfo->fn_oid);
-        //         }
-        //         if (ExecEvalStepOp(state, &(state->steps[idxC])) == 42)
-        //         {
-        //             printf("PARAM_ID: %d\n", state->steps[idxC].d.param.paramid);
-        //             selections[state->steps[idxC].d.param.paramid][state->steps[idxC + 1].d.fieldselect.fieldnum] = 1;
-        //         }
-        //         if (ExecEvalStepOp(state, &(state->steps[idxC])) == 59)
-        //         {
-        //             printf("FIELD_ID: %hd\n", state->steps[idxC].d.fieldselect.fieldnum);
-        //             printf("FIELDTYPE_OID: %u\n", state->steps[idxC].d.fieldselect.resulttype);
-        //         }
-        //     }
-
-        //     for (int i = 0; i < list_length(lambda->argtypes); i++)
-        //     {
-        //         TupleDesc td = (TupleDesc)list_nth(lambda->argtypes, i);
-        //         for (int j = 0; j < td->natts; j++)
-        //         {
-        //             printf("OID of List at (%d,%d): %u\n", i, j, td->attrs[j].atttypid);
-        //         }
-        //         //printf("OID of List at %d: %u\n", i, td->tdtypeid);
-        //     }
-        // }
-
         PG_LAMBDA_SETARG(lambda, 0, HeapTupleHeaderGetDatum(hdr));
         Datum result = PG_LAMBDA_EVAL(lambda, 0, &isnull);
 

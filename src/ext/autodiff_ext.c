@@ -112,10 +112,7 @@ Datum autodiff_l1_2_internal(PG_FUNCTION_ARGS)
             TupleDescCopyEntry(outDesc, (AttrNumber)(i + 1), inDesc, (AttrNumber)(i + 1));
         }
 
-        char attrNamesMapped[64];
-        strcpy(attrNamesMapped, "Result");
-
-        TupleDescInitEntry(outDesc, (AttrNumber)(inDesc->natts + 1), attrNamesMapped,
+        TupleDescInitEntry(outDesc, (AttrNumber)(inDesc->natts + 1), "Result",
                            lambda->rettype, lambda->rettypmod, 0);
 
         for (int i = 0; i < inDesc->natts; i++)
@@ -161,7 +158,6 @@ Datum autodiff_l1_2_internal(PG_FUNCTION_ARGS)
         for(int i = 0; i < inDesc->natts; i++) {
             derivatives[i] = Float8GetDatum(0.0);
         }
-
         PG_LAMBDA_SETARG(lambda, 0, HeapTupleHeaderGetDatum(hdr));
         Datum result = PG_LAMBDA_DERIVE(lambda, &isnull, derivatives);
 
@@ -178,7 +174,6 @@ Datum autodiff_l1_2_internal(PG_FUNCTION_ARGS)
             replVal[inDesc->natts + 1 + i] = derivatives[i];
             replIsNull[inDesc->natts + 1 + i] = false;
         }
-
         tuple = heap_form_tuple(outDesc, replVal, replIsNull);
 
         tuplestore_puttuple(tsOut, tuple);
@@ -786,4 +781,39 @@ Datum autodiff_l4_internal(PG_FUNCTION_ARGS, void *(*injected_func)(Datum *res, 
     MemoryContextSwitchTo(oldcontext);
 
     return (Datum)0;
-}*/
+}
+{
+    ExprState *state = castNode(ExprState, lambda->exprstate);
+    bool matrixUsed = false;
+    int selections[5][5] = {0};
+
+    for (int idxC = 0; idxC < state->steps_len; idxC++)
+    {
+        printf("STEP_OID: %u\n", ExecEvalStepOp(state, &(state->steps[idxC])));
+        if (ExecEvalStepOp(state, &(state->steps[idxC])) == 18)
+        {
+            printf("FN_OID: %u\n", state->steps[idxC].d.func.finfo->fn_oid);
+        }
+        if (ExecEvalStepOp(state, &(state->steps[idxC])) == 42)
+        {
+            printf("PARAM_ID: %d\n", state->steps[idxC].d.param.paramid);
+            selections[state->steps[idxC].d.param.paramid][state->steps[idxC + 1].d.fieldselect.fieldnum] = 1;
+        }
+        if (ExecEvalStepOp(state, &(state->steps[idxC])) == 59)
+        {
+            printf("FIELD_ID: %hd\n", state->steps[idxC].d.fieldselect.fieldnum);
+            printf("FIELDTYPE_OID: %u\n", state->steps[idxC].d.fieldselect.resulttype);
+        }
+    }
+
+    for (int i = 0; i < list_length(lambda->argtypes); i++)
+    {
+        TupleDesc td = (TupleDesc)list_nth(lambda->argtypes, i);
+        for (int j = 0; j < td->natts; j++)
+        {
+            printf("OID of List at (%d,%d): %u\n", i, j, td->attrs[j].atttypid);
+        }
+        //printf("OID of List at %d: %u\n", i, td->tdtypeid);
+    }
+}
+*/

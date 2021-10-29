@@ -68,7 +68,7 @@ returns setof record
 as '/home/clemens/masterarbeit/psql-autodiff/src/ext/pagerank_ext.so','pagerank_threads'
 language C STRICT;
 
-create or replace function autodiff_l1_2(lambdatable, "lambda")
+create or replace function autodiff_l1_2(lambdacursor, "lambda")
 returns setof record
 as '/home/clemens/masterarbeit/psql-autodiff/src/ext/autodiff_ext.so','autodiff_l1_2'
 language C STRICT;
@@ -84,27 +84,28 @@ as '/home/clemens/masterarbeit/psql-autodiff/src/ext/autodiff_ext.so','autodiff_
 language C STRICT;
 
 --test all functions and run them with their corresponding datatables
---set jit='off'; 
---select * from label((select x, y from nums_matrix),(lambda(a)(mat_mul(a.x,a.y)))) limit 10;
---select * from label_fast((select * from nums),(lambda(a)(atan2(a.x, a.y)))) limit 10;
---select * from kmeans((select * from points),(select * from points),(lambda(a,b)(a.x + a.y - (b.x + b.y))), 10, 100) limit 10;
---select * from kmeans_threads((select * from points),(select * from points),(lambda(a,b)(a.x + a.y - (b.x + b.y))), 10, 100) limit 10;
---select * from pagerank((select * from pages), (lambda(src)(src.src)), (lambda(dst)(dst.dst)), 0.85, 0.00001, 100, 100) limit 10;
---select * from pagerank_threads((select * from pages), (lambda(src)(src.src)), (lambda(dst)(dst.dst)), 0.85, 0.00001, 100, 100) limit 10;
+-- set jit='off'; 
+-- select * from label((select x, y from nums_matrix),(lambda(a)(mat_mul(a.x,a.y)))) limit 10;
+-- set jit='on'; 
+-- select * from label_fast((select * from nums),(lambda(a)(atan2(a.x, a.y)))) limit 10;
+-- select * from kmeans((select * from points),(select * from points),(lambda(a,b)(a.x + a.y - (b.x + b.y))), 10, 100) limit 10;
+-- select * from kmeans_threads((select * from points),(select * from points),(lambda(a,b)(a.x + a.y - (b.x + b.y))), 10, 100) limit 10;
+-- select * from pagerank((select * from pages), (lambda(src)(src.src)), (lambda(dst)(dst.dst)), 0.85, 0.00001, 100, 100) limit 10;
+-- select * from pagerank_threads((select * from pages), (lambda(src)(src.src)), (lambda(dst)(dst.dst)), 0.85, 0.00001, 100, 100) limit 10;
 
 -- set jit='off';
 -- select * from autodiff_l1_2((select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
---set jit='on';
---select * from autodiff_l1_2((select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
---select * from autodiff_l3(  (select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
---select * from autodiff_l4(  (select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
+-- set jit='on';
+-- select * from autodiff_l1_2((select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
+-- select * from autodiff_l3(  (select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
+-- select * from autodiff_l4(  (select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
 
 -- set jit='off';
 -- select * from autodiff_l1_2((select x, y from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, a.y), mat_mul(a.x, a.y))))) limit 10;
---set jit='on';
---select * from autodiff_l1_2((select x, y from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, a.y), mat_mul(a.x, a.y))))) limit 10;
---select * from autodiff_l3(  (select x, y from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, a.y), mat_mul(a.x, a.y))))) limit 10;
---select * from autodiff_l4(  (select x, y from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, a.y), mat_mul(a.x, a.y))))) limit 10;
+-- set jit='on';
+-- select * from autodiff_l1_2((select x, y from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, a.y), mat_mul(a.x, a.y))))) limit 10;
+-- select * from autodiff_l3(  (select x, y from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, a.y), mat_mul(a.x, a.y))))) limit 10;
+-- select * from autodiff_l4(  (select x, y from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, a.y), mat_mul(a.x, a.y))))) limit 10;
 
 
 
@@ -112,9 +113,9 @@ language C STRICT;
 -- TESTS FOR GRADIENT DESCENT PURE PL/PGSQL-IMPLEMENTATIONS
 
 
-drop table if exists data;
-create table data (x1 float, x2 float, x3 float, x4 float, x5 float, x6 float, x7 float, x8 float, y1 float, y2 float, y3 float, y4 float, y5 float, y6 float, y7 float, y8 float, mynull float);
-insert into data (select *,0.5+0.8*x1,0.5+0.8*x1+0.8*x2,0.5+0.8*x1+0.8*x2+0.8*x3,0.5+0.8*x1+0.8*x2+0.8*x3+0.8*x4,0.5+0.8*x1+0.8*x2+0.8*x3+0.8*x4+0.8*x5,0.5+0.8*x1+0.8*x2+0.8*x3+0.8*x4+0.8*x5+0.8*x6,0.5+0.8*x1+0.8*x2+0.8*x3+0.8*x4+0.8*x5+0.8*x6+0.8*x7,0.5+0.8*x1+0.8*x2+0.8*x3+0.8*x4+0.8*x5+0.8*x6+0.8*x7+0.8*x8 from (select random() x1, random() x2, random() x3, random() x4, random() x5, random() x6, random() x7, random() x8, 0 from generate_series(1,10000)) as my_alias_1);
+-- drop table if exists data;
+-- create table data (x1 float, x2 float, x3 float, x4 float, x5 float, x6 float, x7 float, x8 float, y1 float, y2 float, y3 float, y4 float, y5 float, y6 float, y7 float, y8 float, mynull float);
+-- insert into data (select *,0.5+0.8*x1,0.5+0.8*x1+0.8*x2,0.5+0.8*x1+0.8*x2+0.8*x3,0.5+0.8*x1+0.8*x2+0.8*x3+0.8*x4,0.5+0.8*x1+0.8*x2+0.8*x3+0.8*x4+0.8*x5,0.5+0.8*x1+0.8*x2+0.8*x3+0.8*x4+0.8*x5+0.8*x6,0.5+0.8*x1+0.8*x2+0.8*x3+0.8*x4+0.8*x5+0.8*x6+0.8*x7,0.5+0.8*x1+0.8*x2+0.8*x3+0.8*x4+0.8*x5+0.8*x6+0.8*x7+0.8*x8 from (select random() x1, random() x2, random() x3, random() x4, random() x5, random() x6, random() x7, random() x8, 0 from generate_series(1,10000)) as my_alias_1);
 -- 
 -- drop table if exists gd;
 -- create table gd(id integer, a1 float, a2 float, b float);
@@ -193,15 +194,15 @@ insert into data (select *,0.5+0.8*x1,0.5+0.8*x1+0.8*x2,0.5+0.8*x1+0.8*x2+0.8*x3
 -- 	from gd, (select * from data limit 10) as pg_alias where id <= 5 group by id, a1, b
 -- ) select * from gd where id = 5;
 
-with recursive gd as (
-	select 1, 1::float, 1::float, 1::float
-union all
-    select (id + 1)::integer as id,
-           (a1- 0.001 * avg(d_a1))::float as a1,
-           (a2- 0.001 * avg(d_a2))::float as a2,
-           (b - 0.001 * avg(d_b))::float as b
-    from autodiff_l1_2((select * from gd, (select * from data limit 10) as my_alias_2 where id <= 5), 
-                       (lambda(x)((x.a1*x.x1 + x.a2*x.x2 + x.b-x.y2)^2)))
-    group by id, a1, a2, b
-)
-select * from gd;
+-- with recursive gd as (
+-- 	select 1, 1::float, 1::float, 1::float
+-- union all
+--     select (id + 1)::integer as id,
+--            (a1- 0.001 * avg(d_a1))::float as a1,
+--            (a2- 0.001 * avg(d_a2))::float as a2,
+--            (b - 0.001 * avg(d_b))::float as b
+--     from autodiff_l1_2((select * from gd, (select * from data limit 10) as my_alias_2 where id <= 5), 
+--                        (lambda(x)((x.a1*x.x1 + x.a2*x.x2 + x.b-x.y2)^2)))
+--     group by id, a1, a2, b
+-- )
+-- select * from gd;
