@@ -175,7 +175,7 @@ kmeans_internal2(PG_FUNCTION_ARGS, int nthreads, void* (*worker_func) (void *arg
     TupleDesc nodeDesc = (TupleDesc) list_nth(lambda->argtypes, 1);
 
     struct KMeansWorkerArgs *workerArgs = (struct KMeansWorkerArgs *) 
-    palloc0(nthreads * sizeof(struct KMeansWorkerArgs));
+        palloc0(nthreads * sizeof(struct KMeansWorkerArgs));
     instr_time  starttime;
     instr_time  endtime;
     instr_time  ctr;

@@ -4369,7 +4369,7 @@ bool llvm_compile_simple_expr_derive(ExprState *state)
 	LLVMBasicBlockRef entry;
 	LLVMBasicBlockRef *opblocks;
 	LLVMValueRef registers[50];
-	LLVMValueRef intermediate_vals[2 * state->steps_len]; // should be "2 * state->steps_len", but is 100 for testing and dev purposes(might exceed size and cause segfault)
+	LLVMValueRef intermediate_vals[2 * state->steps_len];
 	int registerPointer = 0;
 	int funcInputPointer = 0;
 

@@ -140,7 +140,7 @@ pagerank_internal(PG_FUNCTION_ARGS, int nthreads)
     Datum replVal[2];
     pthread_t workers[nthreads];
     struct PageRankWorkerArgs *workerArgs = (struct PageRankWorkerArgs *) 
-    palloc0(nthreads * sizeof(struct PageRankWorkerArgs));
+        palloc0(nthreads * sizeof(struct PageRankWorkerArgs));
     instr_time  starttime;
     instr_time  endtime;
     instr_time  ctr;

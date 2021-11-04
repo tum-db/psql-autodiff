@@ -2684,10 +2684,6 @@ ExecInitFunc(ExprEvalStep *scratch, Expr *node, List *args, Oid funcid,
 	int argno;
 	ListCell *lc;
 
-	//Clemens start
-	bool print_Debug = false;
-	//Clemens end
-
 	/* Check permission to call function */
 	aclresult = pg_proc_aclcheck(funcid, GetUserId(), ACL_EXECUTE);
 	if (aclresult != ACLCHECK_OK)
@@ -2754,10 +2750,6 @@ ExecInitFunc(ExprEvalStep *scratch, Expr *node, List *args, Oid funcid,
 		}
 		else if (IsA(arg, LambdaExpr))
 		{
-			//Clemens start
-			if (print_Debug)
-				printf("LambdaExpr in ExecInitFunc\n");
-			//Clemens end
 			LambdaExpr *le = (LambdaExpr *)arg;
 
 			fcinfo->arg[argno] = PointerGetDatum(le);
@@ -2765,20 +2757,11 @@ ExecInitFunc(ExprEvalStep *scratch, Expr *node, List *args, Oid funcid,
 		}
 		else
 		{
-			//Clemens start
-			if (print_Debug)
-				printf("Neither const nor lambda in ExecInitFunc\n");
-			//Clemens end
 			ExecInitExprRec(arg, state,
 							&fcinfo->arg[argno], &fcinfo->argnull[argno]);
 		}
 		argno++;
 	}
-
-	//Clemens start
-	if (print_Debug)
-		printf("Add OpCode of ExecInitFunc\n");
-	//Clemens end
 	/* Insert appropriate opcode depending on strictness and stats level */
 	if (pgstat_track_functions <= flinfo->fn_stats)
 	{
