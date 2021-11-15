@@ -83,6 +83,11 @@ returns setof record
 as '/home/clemens/masterarbeit/psql-autodiff/src/ext/autodiff_ext.so','autodiff_l4'
 language C STRICT;
 
+create or replace function autodiff_debug("lambda", lambdacursor, lambdacursor)
+returns int
+as '/home/clemens/masterarbeit/psql-autodiff/src/ext/autodiff_ext.so','autodiff_debug'
+language C STRICT;
+
 create or replace function autodiff_t_l1_2(lambdacursor, "lambda")
 returns setof record
 as '/home/clemens/masterarbeit/psql-autodiff/src/ext/autodiff_timing.so','autodiff_t_l1_2'
@@ -113,10 +118,8 @@ returns setof record
 as '/home/clemens/masterarbeit/psql-autodiff/src/ext/gradient_desc_ext.so','gradient_descent_l4'
 language C STRICT;
 
--- create or replace function gradient_descent_mt(lambdatable, "lambda", int, int, int, int)
--- returns setof record
--- as '/home/clemens/masterarbeit/psql-autodiff/src/ext/gradient_desc_ext.so','gradient_descent_multithreaded'
--- language C STRICT;
+set jit='off';
+select * from autodiff_l1_2((select * from nums), (lambda(x)(x.x + x.y)));
 
 --test all functions and run them with their corresponding datatables
 -- set jit='off'; 

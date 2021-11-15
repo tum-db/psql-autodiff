@@ -2,6 +2,9 @@ FROM ubuntu:20.04
 LABEL Clemens Ruck - Maintainer
 #ENV DEBIAN_FRONTEND noninteractive
 
+EXPOSE 5432/tcp
+EXPOSE 5432/udp
+
 # Install some tools
 RUN apt-get update && apt-get install -y g++ clang-7 llvm-7 python make python2.7-dev bison flex libreadline-dev zlib1g-dev perl
 COPY . /psql
@@ -19,5 +22,4 @@ RUN /psql/install/bin/initdb -D /pgdata
 #VOLUME  ["/results"]
 
 # Set the default command to run when starting the container
-#EXPOSE 5432
 CMD /psql/install/bin/postmaster -D /pgdata

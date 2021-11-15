@@ -159,6 +159,10 @@ ExecInitLambdaExpr(Node *node, bool fastLambda, bool buildDiff)
 	ExprState *state;
 	LambdaExpr *expr = (LambdaExpr *)node;
 
+	/* Special case: NULL expression produces a NULL ExprState pointer */
+	if (node == NULL)
+		return NULL;
+
 	ExprEvalStep scratch = {0};
 
 	if (!fastLambda)
@@ -177,10 +181,6 @@ ExecInitLambdaExpr(Node *node, bool fastLambda, bool buildDiff)
 			paramData->ptype = RECORDOID;
 		}
 	}
-
-	/* Special case: NULL expression produces a NULL ExprState pointer */
-	if (node == NULL)
-		return NULL;
 
 	/* Initialize ExprState with empty step list */
 	state = makeNode(ExprState);
@@ -201,6 +201,10 @@ ExecInitLambdaExpr(Node *node, bool fastLambda, bool buildDiff)
 
 	/* Before jit compilation, figure out, if matrix-arithmetics are needed */
 	ExecCheckLambdaForMatrix(state);
+
+	/* Set indexArray for easy lookups of derivative index */
+	state->indexArray = ExecGenerateIndexArray(expr);
+
 
 	oldflags = state->parent->state->es_jit_flags;
 
@@ -265,6 +269,42 @@ void ExecCheckLambdaForMatrix(ExprState *expression)
 }
 
 /*
+ * ExecGenerateIndexArray: Generate Index array from lambdaExpression
+ * 
+ * This function generates the correct index array, which helps to identify which variable is being derived.
+ * It is a running tally of which table-input, for the lambda-expression, start at which index in the derivatives array.
+ */
+int* ExecGenerateIndexArray(LambdaExpr *lambda) {
+	//printf("The length of the lambda-input list: %d", list_length(lambda->args));
+	int numTables = list_length(lambda->args);
+	int *indexArray = palloc0(numTables * sizeof(int));
+	int runningTally = 0;
+	for(int i = 0; i < numTables; i++) {
+		indexArray[i] = runningTally;
+		TupleDesc inDesc = (TupleDesc)list_nth(lambda->argtypes, i);
+		runningTally += inDesc->natts;
+	}
+	return indexArray;
+}
+
+/*
+ * ExecGetLambdaDerivativesLength: Returns length of all lambda-input-tables combined
+ * 
+ * Adds up all lengths, of all tables that have been input, into the lambdaExpression, can then
+ * be used e.g. for determining the length of the result table, and the length of the derivatives array.
+ */
+int ExecGetLambdaDerivativesLength(LambdaExpr *expr) {
+	int numTables = list_length(expr->args);
+	int runningTally = 0;
+	for (int i = 0; i < numTables; i++)
+	{
+		TupleDesc inDesc = (TupleDesc)list_nth(expr->argtypes, i);
+		runningTally += inDesc->natts;
+	}
+	return runningTally;
+}
+
+/*
  * ExecLambdaDerive: Evaluate LAMBDA and derive into DERIVATIVES 
  * 
  * This function serves as a single call the evaluate and derive a single lambda function for a single point, 
@@ -302,7 +342,9 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 	{
 	case 59: /*EEOP_FIELDSELECT*/
 	{
-		int fieldNum = state->steps[fetchIndex].d.fieldselect.fieldnum - 1;
+		int fieldNum = (state->indexArray[state->steps[fetchIndex - 1].d.param.paramid - 1]) + 
+				(state->steps[fetchIndex].d.fieldselect.fieldnum - 1);
+		//int fieldNum = state->steps[fetchIndex].d.fieldselect.fieldnum - 1;
 		if (state->lambdaContainsMatrix) {
 			derivatives[fieldNum] = matrix_add_inplace(derivatives[fieldNum], seed);
 		} else {
@@ -614,6 +656,46 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 			int startingPointForY = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedY, derivatives);
 			int stepIndexAfterX = ExecLambdaDeriveSubtree(state, startingPointForY, newSeedX, derivatives);
 			resultFetchIndex = stepIndexAfterX;
+			break;
+		}
+		case 9001: /* matrix element-wise silu */
+		{
+			float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+
+			Datum newSeedX = matrix_elem_mult(seed, silu_m_derive(x));
+
+			int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+			resultFetchIndex = stepsAfterSubtree;
+			break;
+		}
+		case 9002: /* matrix element-wise sigmoid */
+		{
+			float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+
+			Datum newSeedX = matrix_elem_mult(seed, sigmoid_m_derive(x));
+
+			int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+			resultFetchIndex = stepsAfterSubtree;
+			break;
+		}
+		case 9003: /* matrix element-wise tanh */
+		{
+			float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+
+			Datum newSeedX = matrix_elem_mult(seed, tanh_m_derive(x));
+
+			int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+			resultFetchIndex = stepsAfterSubtree;
+			break;
+		}
+		case 9004: /* matrix element-wise relu */
+		{
+			float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+
+			Datum newSeedX = matrix_elem_mult(seed, relu_m_derive(x));
+
+			int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+			resultFetchIndex = stepsAfterSubtree;
 			break;
 		}
 		default:

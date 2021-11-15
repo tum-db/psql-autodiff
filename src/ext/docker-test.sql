@@ -8,33 +8,16 @@ load 'llvmjit.so';
 set jit='off';                    --enforce no jit
 
 --drop all tables, to create new ones
-drop table if exists nums;
 drop table if exists nums_numeric;
-drop table if exists nums_label;
-drop table if exists nums_null;
-drop table if exists points;
-drop table if exists pages;
 drop table if exists nums_matrix;
 
 --create new tables and fill them with usable data
-create table nums(x float not null, y float not null, z float not null, a float not null, b float not null, c float not null);
 create table nums_numeric(x float not null, y float not null, z float not null);
-create table nums_label(x float not null, y float not null, z float not null);
-create table nums_null(x float, y float);
 create table nums_matrix(x double precision array not null, y double precision array not null);
-create table points(x float not null, y float not null);
-create table pages(src float not null, dst float not null, tmp_x float not null, tmp_y float not null);
 
-insert into nums select generate_series(1, 100), generate_series(101, 200), generate_series(201, 300), generate_series(1, 100), generate_series(1, 100), generate_series(1, 100);
 insert into nums_numeric select generate_series(-2, -2), generate_series(5, 5), generate_series(12, 12);
-insert into nums_label select generate_series(2, 2), generate_series(4, 4), generate_series(5, 5);
 insert into nums_matrix values ('{{2,4}, {6,8}, {2,2}}', '{{8,4,2}, {4,2,1}}');
 
-insert into nums_null select generate_series(1, 1), generate_series(2, 2);
-insert into nums_null select 1 as x, null as y;
-
-insert into points select generate_series(1, 100), generate_series(101, 200);
-insert into pages select generate_series(0.1, 1), generate_series(0.1, 1), generate_series(0.1, 1), generate_series(0.1, 1);
 
 
 --load all functions

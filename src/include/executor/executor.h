@@ -254,7 +254,9 @@ ExecProcNode(PlanState *node)
 extern ExprState *ExecInitExpr(Expr *node, PlanState *parent);
 extern ExprState *ExecInitLambdaExpr(Node *node, bool fastLambda, bool buildDiff);
 extern Datum ExecDeriveLambdaExpr(ExprState *expression, ExprContext *econtext, bool *isNull, Datum *derivatives);
-extern void ExecCheckLambdaForMatrix(ExprState *expression); 
+extern void ExecCheckLambdaForMatrix(ExprState *expression);
+extern int *ExecGenerateIndexArray(LambdaExpr *lambda);
+extern int ExecGetLambdaDerivativesLength(LambdaExpr *expr);
 extern int ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *derivatives);
 extern ExprState *ExecInitExprWithParams(Expr *node, ParamListInfo ext_params);
 extern ExprState *ExecInitQual(List *qual, PlanState *parent);

@@ -364,6 +364,47 @@ Datum matrix_add_inplace(Datum MatA, Datum MatB)
 }
 
 /*
+ * Multiply two matrices inplace and return product as new stand-alone matrix(to avert pointer issues)
+ */
+Datum matrix_elem_mult(Datum matA, Datum matB) {
+    ArrayType *a, *b, *ret;
+    int ndims;
+    int *dims;
+
+    if (DatumGetPointer(matA) == NULL || DatumGetPointer(matB) == NULL) {
+        ereport(ERROR, (errmsg("Matrix element-wise Multiplication: MatrixPointers are null")));
+    }
+
+    a = DatumGetArrayTypeP(matA);
+    b = DatumGetArrayTypeP(matB);
+
+    ndims = ARR_NDIM(a);
+    dims = ARR_DIMS(a);
+    if (ArrayGetNItems(ARR_NDIM(a), ARR_DIMS(a)) != ArrayGetNItems(ARR_NDIM(b), ARR_DIMS(b)))
+    {
+        ereport(ERROR, (errmsg("Matrix element-wise Multiplication: Matrices are mismatched!")));
+    }
+    for(int i = 0; i < ndims; i++) {
+        if(dims[i] != ARR_DIMS(b)[i]) {
+            ereport(ERROR, (errmsg("Matrix element-wise Multiplication: Matrices are mismatched!")));
+        }
+    }
+
+    ret = initResult(ndims, dims, ARR_LBOUND(a));
+
+    float8 *ret_data = (float8 *)ARR_DATA_PTR(ret);
+    float8 *a_data = (float8 *)ARR_DATA_PTR(a);
+    float8 *b_data = (float8 *)ARR_DATA_PTR(b);
+
+#pragma omp parrallel for
+    for (int i = 0; i < ArrayGetNItems(ARR_NDIM(a), ARR_DIMS(a)); i++) {
+        ret_data[i] = a_data[i] * b_data[i];
+    }
+
+    PG_RETURN_ARRAYTYPE_P(ret);
+}
+
+/*
  * Transpose a matrix and return transposed copy
  */
 Datum matrix_transpose_internal(Datum MatA)
@@ -428,7 +469,23 @@ Datum softmax_cce_internal(Datum inputs_in, Datum labels_in)
     int length = ArrayGetNItems(ARR_NDIM(input), ARR_DIMS(input));
     if (length != ArrayGetNItems(ARR_NDIM(labels), ARR_DIMS(labels)))
     {
-        ereport(ERROR, (errmsg("Softmax: Vectors *labels* and *input* do not match!")));
+        ereport(ERROR, (errmsg("Softmax derivation: Arrays *labels* and *input* do not match!")));
+    }
+    if (ARR_NDIM(input) > 2)
+    {
+        ereport(ERROR, (errmsg("Softmax derivation: Array *input* is not a vector!")));
+    }
+    else if (ARR_NDIM(input) == 2 && (ARR_DIMS(input)[1] != 1 || ARR_DIMS(input)[0] != 1))
+    {
+        ereport(ERROR, (errmsg("Softmax derivation: Array *input* is not a vector!")));
+    }
+    if (ARR_NDIM(labels) > 2)
+    {
+        ereport(ERROR, (errmsg("Softmax derivation: Array *labels* is not a vector!")));
+    }
+    else if (ARR_NDIM(labels) == 2 && (ARR_DIMS(labels)[1] != 1 || ARR_DIMS(labels)[0] != 1))
+    {
+        ereport(ERROR, (errmsg("Softmax derivation: Array *label* is not a vector!")));
     }
     float8 *result = (float8 *)palloc0(length * sizeof(float8));
 
@@ -481,13 +538,29 @@ Datum softmax_cce_derive(Datum inputs_in, Datum labels_in)
     int length = ArrayGetNItems(ARR_NDIM(input_arr), ARR_DIMS(input_arr));
     if (length != ArrayGetNItems(ARR_NDIM(labels_arr), ARR_DIMS(labels_arr)))
     {
-        ereport(ERROR, (errmsg("Softmax derivation: Vectors *labels* and *input* do not match!")));
+        ereport(ERROR, (errmsg("Softmax derivation: Arrays *labels* and *input* do not match!")));
+    }
+    if (ARR_NDIM(input_arr) > 2) 
+    {
+        ereport(ERROR, (errmsg("Softmax derivation: Array *input* is not a vector!")));
+    }
+    else if (ARR_NDIM(input_arr) == 2 && (ARR_DIMS(input_arr)[1] != 1 || ARR_DIMS(input_arr)[0] != 1))
+    {
+        ereport(ERROR, (errmsg("Softmax derivation: Array *input* is not a vector!")));
+    }
+    if (ARR_NDIM(labels_arr) > 2)
+    {
+        ereport(ERROR, (errmsg("Softmax derivation: Array *labels* is not a vector!")));
+    }
+    else if (ARR_NDIM(labels_arr) == 2 && (ARR_DIMS(labels_arr)[1] != 1 || ARR_DIMS(labels_arr)[0] != 1))
+    {
+        ereport(ERROR, (errmsg("Softmax derivation: Array *label* is not a vector!")));
     }
     result_arr = initResult(ARR_NDIM(input_arr), ARR_DIMS(input_arr), ARR_LBOUND(input_arr));
     float8 *result = (float8 *)ARR_DATA_PTR(result_arr);
 
     max = input[0];
-    for (int i = 0; i < length; i++)
+    for (int i = 1; i < length; i++)
     {
         if (max < input[i])
         {
@@ -512,6 +585,149 @@ Datum softmax_cce_derive(Datum inputs_in, Datum labels_in)
         result[i] -= labels[i];
     }
     PG_RETURN_ARRAYTYPE_P(result_arr);
+}
+
+/* silu_m   -   apply silu to an entire n-dimensional array*/
+Datum silu_m(PG_FUNCTION_ARGS)
+{
+    return silu_m_internal(PG_GETARG_DATUM(0));
+}
+
+/* silu_m   -   apply silu to an entire n-dimensional array*/
+Datum silu_m_internal(Datum input)
+{
+    ArrayType *ret = copyArray(input);
+    Datum *data = ARR_DATA_PTR(ret);
+#pragma omp parallel for
+    for(int i = 0; i < ArrayGetNItems(ARR_NDIM(ret), ARR_DIMS(ret)); i++) {
+        float8 val = (DatumGetFloat8(data[i]))/(1 + exp((-1) * DatumGetFloat8(data[i])));
+        data[i] = Float8GetDatum(val);
+    }
+    PG_RETURN_ARRAYTYPE_P(ret);
+}
+
+/* silu_m_derive   -   calculate the derivative of element-wise silu*/
+Datum silu_m_derive(Datum input) {
+    ArrayType *ret = copyArray(input);
+    Datum *data = ARR_DATA_PTR(ret);
+#pragma omp parallel for
+    for (int i = 0; i < ArrayGetNItems(ARR_NDIM(ret), ARR_DIMS(ret)); i++)
+    {
+        float8 x = DatumGetFloat8(data[i]);
+        float8 val = (1 + exp((-1)*x) + x * exp((-1) * x))/(pow((1 + exp((-1) * x)), 2));
+        data[i] = Float8GetDatum(val);
+    }
+    PG_RETURN_ARRAYTYPE_P(ret);
+}
+
+/* sigmoid_m   -   apply sigmoid to an entire n-dimensional array*/
+Datum sigmoid_m(PG_FUNCTION_ARGS)
+{
+    return sigmoid_m_internal(PG_GETARG_DATUM(0));
+}
+
+/* sigmoid_m   -   apply sigmoid to an entire n-dimensional array*/
+Datum sigmoid_m_internal(Datum input)
+{
+    ArrayType *ret = copyArray(input);
+    Datum *data = ARR_DATA_PTR(ret);
+#pragma omp parallel for
+    for (int i = 0; i < ArrayGetNItems(ARR_NDIM(ret), ARR_DIMS(ret)); i++)
+    {
+        float8 x = DatumGetFloat8(data[i]);
+        float8 val = (1) / (1 + exp((-1) * x));
+        data[i] = Float8GetDatum(val);
+    }
+    PG_RETURN_ARRAYTYPE_P(ret);
+}
+
+/* sigmoid_m_derive   -   calculate the derivative of element-wise sigmoid*/
+Datum sigmoid_m_derive(Datum input)
+{
+    ArrayType *ret = copyArray(input);
+    Datum *data = ARR_DATA_PTR(ret);
+#pragma omp parallel for
+    for (int i = 0; i < ArrayGetNItems(ARR_NDIM(ret), ARR_DIMS(ret)); i++)
+    {
+        float8 x = DatumGetFloat8(data[i]);
+        float8 sig_of_x = (1) / (1 + exp((-1) * x));
+        float8 val = sig_of_x * (1 - sig_of_x);
+        data[i] = Float8GetDatum(val);
+    }
+    PG_RETURN_ARRAYTYPE_P(ret);
+}
+
+/* tanh_m   -   apply tanh to an entire n-dimensional array*/
+Datum tanh_m(PG_FUNCTION_ARGS)
+{
+    return tanh_m_internal(PG_GETARG_DATUM(0));
+}
+
+/* tanh_m   -   apply tanh to an entire n-dimensional array*/
+Datum tanh_m_internal(Datum input)
+{
+    ArrayType *ret = copyArray(input);
+    Datum *data = ARR_DATA_PTR(ret);
+#pragma omp parallel for
+    for (int i = 0; i < ArrayGetNItems(ARR_NDIM(ret), ARR_DIMS(ret)); i++)
+    {
+        float8 x = DatumGetFloat8(data[i]);
+        float8 val = tanh(x);
+        data[i] = Float8GetDatum(val);
+    }
+    PG_RETURN_ARRAYTYPE_P(ret);
+}
+
+/* tanh_m_derive   -   calculate the derivative of element-wise tanh*/
+Datum tanh_m_derive(Datum input)
+{
+    ArrayType *ret = copyArray(input);
+    Datum *data = ARR_DATA_PTR(ret);
+#pragma omp parallel for
+    for (int i = 0; i < ArrayGetNItems(ARR_NDIM(ret), ARR_DIMS(ret)); i++)
+    {
+        float8 x = DatumGetFloat8(data[i]);
+        float8 tanh_of_x = tanh(x);
+        float8 val = 1 - tanh_of_x * tanh_of_x;
+        data[i] = Float8GetDatum(val);
+    }
+    PG_RETURN_ARRAYTYPE_P(ret);
+}
+
+/* relu_m   -   apply relu to an entire n-dimensional array*/
+Datum relu_m(PG_FUNCTION_ARGS)
+{
+    return relu_m_internal(PG_GETARG_DATUM(0));
+}
+
+/* relu_m   -   apply relu to an entire n-dimensional array*/
+Datum relu_m_internal(Datum input)
+{
+    ArrayType *ret = copyArray(input);
+    Datum *data = ARR_DATA_PTR(ret);
+#pragma omp parallel for
+    for (int i = 0; i < ArrayGetNItems(ARR_NDIM(ret), ARR_DIMS(ret)); i++)
+    {
+        float8 x = DatumGetFloat8(data[i]);
+        float8 val = Max(x, 0);
+        data[i] = Float8GetDatum(val);
+    }
+    PG_RETURN_ARRAYTYPE_P(ret);
+}
+
+/* relu_m_derive   -   calculate the derivative of element-wise relu*/
+Datum relu_m_derive(Datum input)
+{
+    ArrayType *ret = copyArray(input);
+    Datum *data = ARR_DATA_PTR(ret);
+#pragma omp parallel for
+    for (int i = 0; i < ArrayGetNItems(ARR_NDIM(ret), ARR_DIMS(ret)); i++)
+    {
+        float8 x = DatumGetFloat8(data[i]);
+        float8 val = (x > 0) ? (1) : (0);
+        data[i] = Float8GetDatum(val);
+    }
+    PG_RETURN_ARRAYTYPE_P(ret);
 }
 
 /*
@@ -561,7 +777,7 @@ ArrayType *copyArray(Datum orgArray)
 
 /*
  * Create a new ArrayType, either filled with a given value, or the identity matrix
- * NOTICE: The identitymatrix will always be qudratic, but every other matrix does not have to be an can even be 1x3(vector)
+ * NOTICE: The identitymatrix will always be quadratic, but every other matrix does not have to be an can even be 1x3(vector)
  */
 Datum createArray(int *dims, const float8 value, const bool identityMatrix){
     ArrayType *ret;

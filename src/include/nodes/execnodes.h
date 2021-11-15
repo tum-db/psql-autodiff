@@ -138,6 +138,11 @@ typedef struct ExprState
 	 * -> Only use Matrix-arithmetics during Lambda-Evaluation, espc. during differentiation
 	 */
 	bool       lambdaContainsMatrix;
+
+	/*
+	 * Indicates, where a certain variable lies inside derivatives-array
+	 */
+	int 	    *indexArray;
 } ExprState;
 
 

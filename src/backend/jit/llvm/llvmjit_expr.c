@@ -3473,7 +3473,10 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, 		/* Builder containing the pr
 			v_tmpfieldnum,		   				/* The fieldNum parameter of the Fieldselect */
 			v_tmpderivative;	   				/* The value behind the datum-pointer */
 
-		v_tmpfieldnum = l_int32_const(state->steps[fetchIndex].d.fieldselect.fieldnum - 1);
+		int fieldNum = (state->indexArray[state->steps[fetchIndex - 1].d.param.paramid - 1]) +
+					   (state->steps[fetchIndex].d.fieldselect.fieldnum - 1);
+
+		v_tmpfieldnum = l_int32_const(fieldNum);
 		v_derivative_p = LLVMBuildGEP(b,
 									  derivatives,
 									  &v_tmpfieldnum,
@@ -4333,6 +4336,94 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, 		/* Builder containing the pr
 			resultFetchIndex = stepIndexAfterX;
 			break;
 		}
+		case 9001: /* matrix sigmoidial linear unit(silu) */
+		{
+			LLVMValueRef newSeedX, x, mat_elem_mul[2], mat_silu;
+			LLVMTypeRef mat_elem_mul_types[2], mat_silu_type;
+			int stepsAfterSubtree;
+
+			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[0], l_ptr(TypeDatum)), ""));
+
+			mat_elem_mul_types[0] = TypeDatum;
+			mat_elem_mul_types[1] = TypeDatum;
+			mat_silu_type = TypeDatum;
+
+			mat_elem_mul[0] = seed;
+			mat_silu = x;
+			mat_elem_mul[1] = build_EvalCFunc(b, mod, "silu_m_derive", (LLVMValueRef *)&mat_silu, (LLVMTypeRef *)&mat_silu_type, TypeDatum, 1);
+
+			newSeedX = build_EvalCFunc(b, mod, "matrix_elem_mult", (LLVMValueRef *)&mat_elem_mul, (LLVMTypeRef *)&mat_elem_mul_types, TypeDatum, 2);
+
+			stepsAfterSubtree = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives);
+			resultFetchIndex = stepsAfterSubtree;
+			break;
+		}
+		case 9002: /* matrix sigmoid */
+		{
+			LLVMValueRef newSeedX, x, mat_elem_mul[2], mat_silu;
+			LLVMTypeRef mat_elem_mul_types[2], mat_silu_type;
+			int stepsAfterSubtree;
+
+			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[0], l_ptr(TypeDatum)), ""));
+
+			mat_elem_mul_types[0] = TypeDatum;
+			mat_elem_mul_types[1] = TypeDatum;
+			mat_silu_type = TypeDatum;
+
+			mat_elem_mul[0] = seed;
+			mat_silu = x;
+			mat_elem_mul[1] = build_EvalCFunc(b, mod, "sigmoid_m_derive", (LLVMValueRef *)&mat_silu, (LLVMTypeRef *)&mat_silu_type, TypeDatum, 1);
+
+			newSeedX = build_EvalCFunc(b, mod, "matrix_elem_mult", (LLVMValueRef *)&mat_elem_mul, (LLVMTypeRef *)&mat_elem_mul_types, TypeDatum, 2);
+
+			stepsAfterSubtree = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives);
+			resultFetchIndex = stepsAfterSubtree;
+			break;
+		}
+		case 9003: /* matrix tanh */
+		{
+			LLVMValueRef newSeedX, x, mat_elem_mul[2], mat_silu;
+			LLVMTypeRef mat_elem_mul_types[2], mat_silu_type;
+			int stepsAfterSubtree;
+
+			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[0], l_ptr(TypeDatum)), ""));
+
+			mat_elem_mul_types[0] = TypeDatum;
+			mat_elem_mul_types[1] = TypeDatum;
+			mat_silu_type = TypeDatum;
+
+			mat_elem_mul[0] = seed;
+			mat_silu = x;
+			mat_elem_mul[1] = build_EvalCFunc(b, mod, "tanh_m_derive", (LLVMValueRef *)&mat_silu, (LLVMTypeRef *)&mat_silu_type, TypeDatum, 1);
+
+			newSeedX = build_EvalCFunc(b, mod, "matrix_elem_mult", (LLVMValueRef *)&mat_elem_mul, (LLVMTypeRef *)&mat_elem_mul_types, TypeDatum, 2);
+
+			stepsAfterSubtree = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives);
+			resultFetchIndex = stepsAfterSubtree;
+			break;
+		}
+		case 9004: /* matrix rectified linear unit(relu) */
+		{
+			LLVMValueRef newSeedX, x, mat_elem_mul[2], mat_silu;
+			LLVMTypeRef mat_elem_mul_types[2], mat_silu_type;
+			int stepsAfterSubtree;
+
+			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[0], l_ptr(TypeDatum)), ""));
+
+			mat_elem_mul_types[0] = TypeDatum;
+			mat_elem_mul_types[1] = TypeDatum;
+			mat_silu_type = TypeDatum;
+
+			mat_elem_mul[0] = seed;
+			mat_silu = x;
+			mat_elem_mul[1] = build_EvalCFunc(b, mod, "relu_m_derive", (LLVMValueRef *)&mat_silu, (LLVMTypeRef *)&mat_silu_type, TypeDatum, 1);
+
+			newSeedX = build_EvalCFunc(b, mod, "matrix_elem_mult", (LLVMValueRef *)&mat_elem_mul, (LLVMTypeRef *)&mat_elem_mul_types, TypeDatum, 2);
+
+			stepsAfterSubtree = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives);
+			resultFetchIndex = stepsAfterSubtree;
+			break;
+		}
 		default:
 		{
 			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("Derive(L2): current operator not supported, aborting...")));
@@ -4858,6 +4949,54 @@ bool llvm_compile_simple_expr_derive(ExprState *state)
 				break;
 			}
 
+			case 9001:
+			{
+				LLVMTypeRef type;
+				LLVMValueRef param;
+				numparams = 1;
+				type = TypeDatum;
+				param = l_as_float8(b, registers[registerPointer - 1]);
+
+				opres = build_EvalCFunc(b, mod, "silu_m_internal", (LLVMValueRef *)&param, (LLVMTypeRef *)&type, type, 1);
+				break;
+			}
+
+			case 9002:
+			{
+				LLVMTypeRef type;
+				LLVMValueRef param;
+				numparams = 1;
+				type = TypeDatum;
+				param = l_as_float8(b, registers[registerPointer - 1]);
+
+				opres = build_EvalCFunc(b, mod, "sigmoid_m_internal", (LLVMValueRef *)&param, (LLVMTypeRef *)&type, type, 1);
+				break;
+			}
+
+			case 9003:
+			{
+				LLVMTypeRef type;
+				LLVMValueRef param;
+				numparams = 1;
+				type = TypeDatum;
+				param = l_as_float8(b, registers[registerPointer - 1]);
+
+				opres = build_EvalCFunc(b, mod, "tanh_m_internal", (LLVMValueRef *)&param, (LLVMTypeRef *)&type, type, 1);
+				break;
+			}
+
+			case 9004:
+			{
+				LLVMTypeRef type;
+				LLVMValueRef param;
+				numparams = 1;
+				type = TypeDatum;
+				param = l_as_float8(b, registers[registerPointer - 1]);
+
+				opres = build_EvalCFunc(b, mod, "relu_m_internal", (LLVMValueRef *)&param, (LLVMTypeRef *)&type, type, 1);
+				break;
+			}
+
 			default:
 				ereport(ERROR,
 						(errcode(ERRCODE_INTERNAL_ERROR),
@@ -4963,7 +5102,10 @@ llvm_compile_simple_deriv_subtree(LLVMBuilderRef b,			    /* Builder containing 
 			v_tmpfieldnum,			 /* The fieldNum parameter of the Fieldselect */
 			v_tmpderivative;		 /* The value behind the datum-pointer */
 
-		v_tmpfieldnum = l_int32_const(state->steps[fetchIndex].d.fieldselect.fieldnum - 1);
+		int fieldNum = (state->indexArray[state->steps[fetchIndex - 1].d.param.paramid - 1]) +
+					   (state->steps[fetchIndex].d.fieldselect.fieldnum - 1);
+
+		v_tmpfieldnum = l_int32_const(fieldNum);
 		v_derivative_p = LLVMBuildGEP(b,
 									  derivatives,
 									  &v_tmpfieldnum,
@@ -5832,6 +5974,94 @@ llvm_compile_simple_deriv_subtree(LLVMBuilderRef b,			    /* Builder containing 
 			startingPointY = llvm_compile_simple_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedY, derivatives, funcVals, intermediates_pointer);
 			stepAfterX = llvm_compile_simple_deriv_subtree(b, mod, state, startingPointY, newSeedX, derivatives, funcVals, intermediates_pointer);
 			resultFetchIndex = stepAfterX;
+			break;
+		}
+		case 9001: /* matrix sigmoidial linear unit(silu) */
+		{
+			LLVMValueRef newSeedX, x, mat_elem_mul[2], mat_silu;
+			LLVMTypeRef mat_elem_mul_types[2], mat_silu_type;
+			int stepsAfterSubtree;
+
+			x = funcVals[(*intermediates_pointer)--];
+
+			mat_elem_mul_types[0] = TypeDatum;
+			mat_elem_mul_types[1] = TypeDatum;
+			mat_silu_type = TypeDatum;
+
+			mat_elem_mul[0] = seed;
+			mat_silu = x;
+			mat_elem_mul[1] = build_EvalCFunc(b, mod, "silu_m_derive", (LLVMValueRef *)&mat_silu, (LLVMTypeRef *)&mat_silu_type, TypeDatum, 1);
+
+			newSeedX = build_EvalCFunc(b, mod, "matrix_elem_mult", (LLVMValueRef *)&mat_elem_mul, (LLVMTypeRef *)&mat_elem_mul_types, TypeDatum, 2);
+
+			stepsAfterSubtree = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives);
+			resultFetchIndex = stepsAfterSubtree;
+			break;
+		}
+		case 9002: /* matrix sigmoid */
+		{
+			LLVMValueRef newSeedX, x, mat_elem_mul[2], mat_silu;
+			LLVMTypeRef mat_elem_mul_types[2], mat_silu_type;
+			int stepsAfterSubtree;
+
+			x = funcVals[(*intermediates_pointer)--];
+
+			mat_elem_mul_types[0] = TypeDatum;
+			mat_elem_mul_types[1] = TypeDatum;
+			mat_silu_type = TypeDatum;
+
+			mat_elem_mul[0] = seed;
+			mat_silu = x;
+			mat_elem_mul[1] = build_EvalCFunc(b, mod, "sigmoid_m_derive", (LLVMValueRef *)&mat_silu, (LLVMTypeRef *)&mat_silu_type, TypeDatum, 1);
+
+			newSeedX = build_EvalCFunc(b, mod, "matrix_elem_mult", (LLVMValueRef *)&mat_elem_mul, (LLVMTypeRef *)&mat_elem_mul_types, TypeDatum, 2);
+
+			stepsAfterSubtree = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives);
+			resultFetchIndex = stepsAfterSubtree;
+			break;
+		}
+		case 9003: /* matrix tanh */
+		{
+			LLVMValueRef newSeedX, x, mat_elem_mul[2], mat_silu;
+			LLVMTypeRef mat_elem_mul_types[2], mat_silu_type;
+			int stepsAfterSubtree;
+
+			x = funcVals[(*intermediates_pointer)--];
+
+			mat_elem_mul_types[0] = TypeDatum;
+			mat_elem_mul_types[1] = TypeDatum;
+			mat_silu_type = TypeDatum;
+
+			mat_elem_mul[0] = seed;
+			mat_silu = x;
+			mat_elem_mul[1] = build_EvalCFunc(b, mod, "tanh_m_derive", (LLVMValueRef *)&mat_silu, (LLVMTypeRef *)&mat_silu_type, TypeDatum, 1);
+
+			newSeedX = build_EvalCFunc(b, mod, "matrix_elem_mult", (LLVMValueRef *)&mat_elem_mul, (LLVMTypeRef *)&mat_elem_mul_types, TypeDatum, 2);
+
+			stepsAfterSubtree = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives);
+			resultFetchIndex = stepsAfterSubtree;
+			break;
+		}
+		case 9004: /* matrix rectified linear unit(relu) */
+		{
+			LLVMValueRef newSeedX, x, mat_elem_mul[2], mat_silu;
+			LLVMTypeRef mat_elem_mul_types[2], mat_silu_type;
+			int stepsAfterSubtree;
+
+			x = funcVals[(*intermediates_pointer)--];
+
+			mat_elem_mul_types[0] = TypeDatum;
+			mat_elem_mul_types[1] = TypeDatum;
+			mat_silu_type = TypeDatum;
+
+			mat_elem_mul[0] = seed;
+			mat_silu = x;
+			mat_elem_mul[1] = build_EvalCFunc(b, mod, "relu_m_derive", (LLVMValueRef *)&mat_silu, (LLVMTypeRef *)&mat_silu_type, TypeDatum, 1);
+
+			newSeedX = build_EvalCFunc(b, mod, "matrix_elem_mult", (LLVMValueRef *)&mat_elem_mul, (LLVMTypeRef *)&mat_elem_mul_types, TypeDatum, 2);
+
+			stepsAfterSubtree = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives);
+			resultFetchIndex = stepsAfterSubtree;
 			break;
 		}
 		default:
