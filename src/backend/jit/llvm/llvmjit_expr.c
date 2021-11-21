@@ -66,6 +66,7 @@ static int llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, LLVMModuleRef mod, 
 static int llvm_compile_simple_deriv_subtree(LLVMBuilderRef b, LLVMModuleRef mod, ExprState *state,
 											 int fetchIndex, LLVMValueRef seed,
 											 LLVMValueRef derivatives, LLVMValueRef *funcVals, int *intermediates_pointer);
+int* scalar_dimension_pointer();
 
 #define CASE_FLOAT8_CFUNC_2ARG(oid, fname)                                                                   \
 	case oid:                                                                                                \
@@ -3146,6 +3147,17 @@ create_LifetimeEnd(LLVMModuleRef mod)
 }
 
 /*
+ * This function returns a {1, 1} array as a pointer, as quality of life for generating the seed
+ */
+int *scalar_dimension_pointer()
+{
+	int* dims_p = palloc0(2 * sizeof(int));
+	dims_p[0] = 1;
+	dims_p[1] = 1;
+	return dims_p;
+}
+
+/*
  * This function jit compiles LambdaExpr-ExprStates into 
  * usable LLVM-IR derivations, which will not be emitted,  
  * until the derive-function is called for the first time 
@@ -3279,25 +3291,31 @@ bool llvm_compile_expr_derive(ExprState *state)
 			LLVMBuildStore(b, v_tmpisnull, v_isnullp);
 
 			if(state->lambdaContainsMatrix) {
-				LLVMValueRef params[3], res_array_ptr;
-				LLVMTypeRef types[3];
+				LLVMValueRef params[3], res_array_ptr, params_seed_dim_pointer;
+				LLVMTypeRef types[3], type_seed_dim_pointer;
 
-				res_array_ptr = LLVMBuildAdd(b, l_as_int8(b, v_tmpvalue), l_int64_const(sizeof(ArrayType)), "");
+				type_seed_dim_pointer = l_ptr(LLVMInt32Type());
+				params_seed_dim_pointer = l_int64_const(0);
+
+				res_array_ptr = build_EvalCFunc(b, mod, "scalar_dimension_pointer",
+												(LLVMValueRef *)&params_seed_dim_pointer,
+												(LLVMTypeRef *)&type_seed_dim_pointer,
+												l_ptr(LLVMInt32Type()),
+												0);
 
 				types[0] = l_ptr(LLVMInt32Type());
 				types[1] = LLVMDoubleType();
 				types[2] = TypeParamBool;
 
-				params[0] = res_array_ptr;
-				params[1] = l_float8_const(0.0);
-				params[2] = l_pbool_const(true);
+				params[0] = res_array_ptr;			//needs to be int dims[2] = {1, 1};
+				params[1] = l_float8_const(1.0);	//needs to be 1							see execExpr for this
+				params[2] = l_pbool_const(false);	//needs to be false     
 
 				v_seed = build_EvalCFunc(b, mod, "createArray", 
 										 (LLVMValueRef *)&params,
 										 (LLVMTypeRef *)&types,
 										 TypeDatum,
 										 3);
-				//v_seed = l_float8_const(1.0);
 			} else {
 				v_seed = l_float8_const(1.0);
 			}
@@ -4123,20 +4141,36 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, 		/* Builder containing the pr
 		}
 		case 7801: /* softmax */ 
 		{
-			LLVMValueRef x, y, newSeedX, softmax_params[2];
-			LLVMTypeRef softmax_types[2];
+			LLVMValueRef x, y, newSeedX, tmp, softmax_params[2], mat_mul_params[4];
+			LLVMTypeRef softmax_types[2], mat_mul_types[4];
 			int stepIndexAfterX;
 
 			x = LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[0], l_ptr(TypeDatum)), "");
 			y = LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[1], l_ptr(TypeDatum)), "");
 
-			softmax_params[0] = seed;
+			softmax_params[0] = x;
 			softmax_params[1] = y;
 
 			softmax_types[0] = TypeDatum;
 			softmax_types[1] = TypeDatum;
 
-			newSeedX = build_EvalCFunc(b, mod, "softmax_cce_derive", (LLVMValueRef *)&softmax_params, (LLVMTypeRef *)&softmax_types, TypeDatum, 2);
+			tmp = build_EvalCFunc(b, mod, "softmax_cce_derive", (LLVMValueRef *)&softmax_params, (LLVMTypeRef *)&softmax_types, TypeDatum, 2);
+
+			mat_mul_params[0] = seed;
+			mat_mul_params[1] = tmp;
+			mat_mul_params[2] = l_pbool_const(false);
+			mat_mul_params[3] = l_pbool_const(false);
+
+			mat_mul_types[0] = TypeDatum;
+			mat_mul_types[1] = TypeDatum;
+			mat_mul_types[2] = TypeParamBool;
+			mat_mul_types[3] = TypeParamBool;
+
+			newSeedX = build_EvalCFunc(b, mod,
+									   "matrix_mul_internal",
+									   (LLVMValueRef *)&mat_mul_params,
+									   (LLVMTypeRef *)&mat_mul_types,
+									   TypeDatum, 4);
 
 			stepIndexAfterX = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives);
 			resultFetchIndex = stepIndexAfterX;
@@ -4342,7 +4376,7 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, 		/* Builder containing the pr
 			LLVMTypeRef mat_elem_mul_types[2], mat_silu_type;
 			int stepsAfterSubtree;
 
-			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[0], l_ptr(TypeDatum)), ""));
+			x = LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[0], l_ptr(TypeDatum)), "");
 
 			mat_elem_mul_types[0] = TypeDatum;
 			mat_elem_mul_types[1] = TypeDatum;
@@ -4364,7 +4398,7 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, 		/* Builder containing the pr
 			LLVMTypeRef mat_elem_mul_types[2], mat_silu_type;
 			int stepsAfterSubtree;
 
-			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[0], l_ptr(TypeDatum)), ""));
+			x = LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[0], l_ptr(TypeDatum)), "");
 
 			mat_elem_mul_types[0] = TypeDatum;
 			mat_elem_mul_types[1] = TypeDatum;
@@ -4386,7 +4420,7 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, 		/* Builder containing the pr
 			LLVMTypeRef mat_elem_mul_types[2], mat_silu_type;
 			int stepsAfterSubtree;
 
-			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[0], l_ptr(TypeDatum)), ""));
+			x = LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[0], l_ptr(TypeDatum)), "");
 
 			mat_elem_mul_types[0] = TypeDatum;
 			mat_elem_mul_types[1] = TypeDatum;
@@ -4408,7 +4442,7 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, 		/* Builder containing the pr
 			LLVMTypeRef mat_elem_mul_types[2], mat_silu_type;
 			int stepsAfterSubtree;
 
-			x = l_as_float8(b, LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[0], l_ptr(TypeDatum)), ""));
+			x = LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[0], l_ptr(TypeDatum)), "");
 
 			mat_elem_mul_types[0] = TypeDatum;
 			mat_elem_mul_types[1] = TypeDatum;
@@ -4540,18 +4574,25 @@ bool llvm_compile_simple_expr_derive(ExprState *state)
 			LLVMValueRef seed;
 			if (state->lambdaContainsMatrix)
 			{
-				LLVMValueRef params[3], res_array_ptr;
-				LLVMTypeRef types[3];
+				LLVMValueRef params[3], res_array_ptr, params_seed_dim_pointer;
+				LLVMTypeRef types[3], type_seed_dim_pointer;
 
-				res_array_ptr = LLVMBuildAdd(b, l_as_int8(b, registers[registerPointer - 1]), l_int64_const(sizeof(ArrayType)), "");
+				type_seed_dim_pointer = l_ptr(LLVMInt32Type());
+				params_seed_dim_pointer = l_int64_const(0);
+
+				res_array_ptr = build_EvalCFunc(b, mod, "scalar_dimension_pointer",
+												(LLVMValueRef *)&params_seed_dim_pointer,
+												(LLVMTypeRef *)&type_seed_dim_pointer,
+												l_ptr(LLVMInt32Type()),
+												0);
 
 				types[0] = l_ptr(LLVMInt32Type());
 				types[1] = LLVMDoubleType();
 				types[2] = TypeParamBool;
 
 				params[0] = res_array_ptr;
-				params[1] = l_float8_const(0.0);
-				params[2] = l_pbool_const(true);
+				params[1] = l_float8_const(1.0);
+				params[2] = l_pbool_const(false);
 
 				seed = build_EvalCFunc(b, mod, "createArray",
 										 (LLVMValueRef *)&params,
@@ -4566,7 +4607,6 @@ bool llvm_compile_simple_expr_derive(ExprState *state)
 
 			funcInputPointer--;
 			llvm_compile_simple_deriv_subtree(b, mod, state, state->steps_len - 2, seed, v_derivatives, intermediate_vals, &funcInputPointer);
-
 			LLVMBuildRet(b, LLVMBuildZExtOrBitCast(b, registers[registerPointer - 1], TypeDatum, ""));
 
 			break;
@@ -4955,7 +4995,7 @@ bool llvm_compile_simple_expr_derive(ExprState *state)
 				LLVMValueRef param;
 				numparams = 1;
 				type = TypeDatum;
-				param = l_as_float8(b, registers[registerPointer - 1]);
+				param = registers[registerPointer - 1];
 
 				opres = build_EvalCFunc(b, mod, "silu_m_internal", (LLVMValueRef *)&param, (LLVMTypeRef *)&type, type, 1);
 				break;
@@ -4967,7 +5007,7 @@ bool llvm_compile_simple_expr_derive(ExprState *state)
 				LLVMValueRef param;
 				numparams = 1;
 				type = TypeDatum;
-				param = l_as_float8(b, registers[registerPointer - 1]);
+				param = registers[registerPointer - 1];
 
 				opres = build_EvalCFunc(b, mod, "sigmoid_m_internal", (LLVMValueRef *)&param, (LLVMTypeRef *)&type, type, 1);
 				break;
@@ -4979,7 +5019,7 @@ bool llvm_compile_simple_expr_derive(ExprState *state)
 				LLVMValueRef param;
 				numparams = 1;
 				type = TypeDatum;
-				param = l_as_float8(b, registers[registerPointer - 1]);
+				param = registers[registerPointer - 1];
 
 				opres = build_EvalCFunc(b, mod, "tanh_m_internal", (LLVMValueRef *)&param, (LLVMTypeRef *)&type, type, 1);
 				break;
@@ -4991,7 +5031,7 @@ bool llvm_compile_simple_expr_derive(ExprState *state)
 				LLVMValueRef param;
 				numparams = 1;
 				type = TypeDatum;
-				param = l_as_float8(b, registers[registerPointer - 1]);
+				param = registers[registerPointer - 1];
 
 				opres = build_EvalCFunc(b, mod, "relu_m_internal", (LLVMValueRef *)&param, (LLVMTypeRef *)&type, type, 1);
 				break;
@@ -5764,19 +5804,35 @@ llvm_compile_simple_deriv_subtree(LLVMBuilderRef b,			    /* Builder containing 
 		}
 		case 7801: /* Softmax_CCE */
 		{
-			LLVMValueRef x, y, newSeedX, params_softmax[2];
-			LLVMTypeRef types_softmax[2];
+			LLVMValueRef x, y, newSeedX, tmp, params_softmax[2], params_mul[4];
+			LLVMTypeRef types_softmax[2], types_mul[4];
 			int stepAfterX;
 			x = funcVals[(*intermediates_pointer)--];
 			y = funcVals[(*intermediates_pointer)--];
 
-			params_softmax[0] = seed;
-			params_softmax[1] = x;
+			params_softmax[0] = x;       			
+			params_softmax[1] = y;
 
 			types_softmax[0] = TypeDatum;
 			types_softmax[1] = TypeDatum;
 
-			newSeedX = build_EvalCFunc(b, mod, "softmax_cce_derive", (LLVMValueRef *)&params_softmax, (LLVMTypeRef *)&types_softmax, TypeDatum, 2);
+			tmp = build_EvalCFunc(b, mod, "softmax_cce_derive", (LLVMValueRef *)&params_softmax, (LLVMTypeRef *)&types_softmax, TypeDatum, 2);
+
+			types_mul[0] = TypeDatum;
+			types_mul[1] = TypeDatum;
+			types_mul[2] = TypeParamBool;
+			types_mul[3] = TypeParamBool;
+
+			params_mul[0] = seed;
+			params_mul[1] = tmp;
+			params_mul[2] = l_pbool_const(false);
+			params_mul[3] = l_pbool_const(false);
+
+			newSeedX = build_EvalCFunc(b, mod, "matrix_mul_internal",
+									   (LLVMValueRef *)&params_mul,
+									   (LLVMTypeRef *)&types_mul,
+									   TypeDatum,
+									   4);
 
 			stepAfterX = llvm_compile_simple_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives, funcVals, intermediates_pointer);
 			resultFetchIndex = stepAfterX;

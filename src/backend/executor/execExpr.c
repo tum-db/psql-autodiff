@@ -295,11 +295,13 @@ int* ExecGenerateIndexArray(LambdaExpr *lambda) {
  */
 int ExecGetLambdaDerivativesLength(LambdaExpr *expr) {
 	int numTables = list_length(expr->args);
+	printf("number of tables: %d\n", numTables);
 	int runningTally = 0;
 	for (int i = 0; i < numTables; i++)
 	{
 		TupleDesc inDesc = (TupleDesc)list_nth(expr->argtypes, i);
 		runningTally += inDesc->natts;
+		printf("loop %d -> number of attributes currently: %d\n", i, runningTally);
 	}
 	return runningTally;
 }
@@ -317,8 +319,9 @@ Datum ExecDeriveLambdaExpr(ExprState *expression, ExprContext *econtext, bool *i
 	result = (expression->evalfunc(expression, econtext, isNull));
 
 	Datum seed;
+	int dims[2] = {1, 1};
 	if (expression->lambdaContainsMatrix) {
-		seed = createArray(ARR_DIMS(DatumGetArrayTypeP(result)), 0.0, true);
+		seed = createArray(dims, 1.0, false);
 	} else {
 		seed = Float8GetDatum(1.0);
 	}
@@ -344,7 +347,6 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 	{
 		int fieldNum = (state->indexArray[state->steps[fetchIndex - 1].d.param.paramid - 1]) + 
 				(state->steps[fetchIndex].d.fieldselect.fieldnum - 1);
-		//int fieldNum = state->steps[fetchIndex].d.fieldselect.fieldnum - 1;
 		if (state->lambdaContainsMatrix) {
 			derivatives[fieldNum] = matrix_add_inplace(derivatives[fieldNum], seed);
 		} else {
@@ -587,7 +589,7 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 			Datum x = state->steps[fetchIndex].d.func.fcinfo_data->arg[0];
 			Datum y = state->steps[fetchIndex].d.func.fcinfo_data->arg[1];
 
-			Datum newSeedX = softmax_cce_derive(x, y);
+			Datum newSeedX = matrix_mul_internal(seed, softmax_cce_derive(x, y), false, false); // TODO: Multiply seed by softmax_derive(mat_mul_internal(seed, softmax(...)))
 
 			int stepIndexAfterX = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
 			resultFetchIndex = stepIndexAfterX;
@@ -660,7 +662,7 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 		}
 		case 9001: /* matrix element-wise silu */
 		{
-			float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+			Datum x = state->steps[fetchIndex].d.func.fcinfo_data->arg[0];
 
 			Datum newSeedX = matrix_elem_mult(seed, silu_m_derive(x));
 
@@ -670,7 +672,7 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 		}
 		case 9002: /* matrix element-wise sigmoid */
 		{
-			float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+			Datum x = state->steps[fetchIndex].d.func.fcinfo_data->arg[0];
 
 			Datum newSeedX = matrix_elem_mult(seed, sigmoid_m_derive(x));
 
@@ -680,7 +682,7 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 		}
 		case 9003: /* matrix element-wise tanh */
 		{
-			float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+			Datum x = state->steps[fetchIndex].d.func.fcinfo_data->arg[0];
 
 			Datum newSeedX = matrix_elem_mult(seed, tanh_m_derive(x));
 
@@ -690,7 +692,7 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 		}
 		case 9004: /* matrix element-wise relu */
 		{
-			float8 x = DatumGetFloat8(state->steps[fetchIndex].d.func.fcinfo_data->arg[0]);
+			Datum x = state->steps[fetchIndex].d.func.fcinfo_data->arg[0];
 
 			Datum newSeedX = matrix_elem_mult(seed, relu_m_derive(x));
 

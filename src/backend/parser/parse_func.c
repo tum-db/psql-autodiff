@@ -823,6 +823,8 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 			TupleDesc tupdesc = CreateTemplateTupleDesc(
 				list_length(qtree->targetList), false);
 
+			printf("tupdesc size in parse_func.c: %d\n", list_length(qtree->targetList));
+
 			foreach(n, qtree->targetList)
 			{
 				tent = castNode(TargetEntry, lfirst(n));
@@ -876,11 +878,24 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 											exprLocation((Node *) lambda))));
 					}
 
+					{
+						ListCell* tmp;
+						foreach(tmp, ltiList) {
+							printf("tupleDesc->natts: %d\n", ((TupleDesc)tmp->data.ptr_value)->natts);
+						}
+					}
+
+					printf("argPos: %d <-> list_length of ltiList: %d\n", argPos, list_length(ltiList) - 1);
+
 					if (argPos < list_length(ltiList) - 1)
 						subtableInfo = lnext(subtableInfo);
 
 					lambda->argtypes = lappend(lambda->argtypes,
 						lfirst(subtableInfo));
+
+					printf("size of added tupDesc in IsA(Lambda) in parse_func.c: %d\n",
+						   ((TupleDesc)((subtableInfo)->data.ptr_value))->natts);
+
 					argPos++;
 				}
 

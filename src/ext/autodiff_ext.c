@@ -32,16 +32,6 @@ extern TupleDesc autodiff_record_type(List *args)
 
     char attrNamesMapped[64];
     strcpy(attrNamesMapped, "Result");
-    // strcpy(attrNamesMapped, "f(");
-    // for (int i = 0; i < inDesc->natts; i++)
-    // {
-    //     strcat(attrNamesMapped, inDesc->attrs[i].attname.data);
-    //     if (i < inDesc->natts - 1)
-    //     {
-    //         strcat(attrNamesMapped, ",");
-    //     }
-    // }
-    // strcat(attrNamesMapped, ")");
 
     TupleDescInitEntry(outDesc, (AttrNumber)(inDesc->natts + 1), attrNamesMapped,
                        lambda->rettype, lambda->rettypmod, 0);
@@ -198,7 +188,12 @@ Datum autodiff_l1_2_internal(PG_FUNCTION_ARGS)
 
         /* reset derivatives to avoid undefined behaviour */
         for(int i = 0; i < inDesc->natts; i++) {
-            derivatives[i] = Float8GetDatum(0.0);
+            if (castNode(ExprState, lambda->exprstate)->lambdaContainsMatrix) {
+                int dims[2] = {1, 1};
+                derivatives[i] = createArray(dims, 0, false);
+            } else {
+                derivatives[i] = Float8GetDatum(0.0);
+            }
         }
         PG_LAMBDA_SETARG(lambda, 0, HeapTupleHeaderGetDatum(hdr));
         Datum result = PG_LAMBDA_DERIVE(lambda, &isnull, derivatives);
@@ -208,7 +203,6 @@ Datum autodiff_l1_2_internal(PG_FUNCTION_ARGS)
             replVal[i] = val_ptr[i];
             replIsNull[i] = null_ptr[i];
         }
-
         replVal[inDesc->natts] = result;
         replIsNull[inDesc->natts] = false;
 
@@ -216,8 +210,8 @@ Datum autodiff_l1_2_internal(PG_FUNCTION_ARGS)
             replVal[inDesc->natts + 1 + i] = derivatives[i];
             replIsNull[inDesc->natts + 1 + i] = false;
         }
-        tuple = heap_form_tuple(outDesc, replVal, replIsNull);
 
+        tuple = heap_form_tuple(outDesc, replVal, replIsNull);
         tuplestore_puttuple(tsOut, tuple);
     }
 
@@ -451,7 +445,15 @@ Datum autodiff_l3_internal(PG_FUNCTION_ARGS, Datum (*derivefunc)(Datum **arg, Da
         /* reset derivatives to avoid undefined behaviour */
         for (int i = 0; i < inDesc->natts; i++)
         {
-            derivatives[i] = Float8GetDatum(0.0);
+            if (castNode(ExprState, lambda->exprstate)->lambdaContainsMatrix)
+            {
+                int dims[2] = {1, 1};
+                derivatives[i] = createArray(dims, 0, false);
+            }
+            else
+            {
+                derivatives[i] = Float8GetDatum(0.0);
+            }
         }
 
         Datum result = derivefunc(&val_ptr, derivatives);
@@ -580,7 +582,15 @@ Datum autodiff_l4_internal(PG_FUNCTION_ARGS)
         /* reset derivatives to avoid undefined behaviour */
         for (int i = 0; i < inDesc->natts; i++)
         {
-            derivatives[i] = Float8GetDatum(0.0);
+            if (castNode(ExprState, lambda->exprstate)->lambdaContainsMatrix)
+            {
+                int dims[2] = {1, 1};
+                derivatives[i] = createArray(dims, 0, false);
+            }
+            else
+            {
+                derivatives[i] = Float8GetDatum(0.0);
+            }
         }
 
         Datum result = PG_SIMPLE_LAMBDA_INJECT_DERIV(&val_ptr, derivatives, 0);
@@ -797,10 +807,15 @@ Datum autodiff_debug(PG_FUNCTION_ARGS)
 {
     ReturnSetInfo *rsinfo = (ReturnSetInfo *)fcinfo->resultinfo;
     LambdaExpr *lambda = PG_GETARG_LAMBDA(0);
+    LambdaExpr *lambda2 = PG_GETARG_LAMBDA(2);
 
     llvm_enter_tmp_context(rsinfo->econtext->ecxt_estate);
     ExecInitLambdaExpr((Node *)lambda, false, true);
+    ExecInitLambdaExpr((Node *)lambda2, false, true);
     llvm_leave_tmp_context(rsinfo->econtext->ecxt_estate);
+
+    printf("length of derivatives for lambda1: %d\n", ExecGetLambdaDerivativesLength(lambda));
+    printf("length of derivatives for lambda2: %d\n", ExecGetLambdaDerivativesLength(lambda2));
 
     return Int32GetDatum(1);
 }
