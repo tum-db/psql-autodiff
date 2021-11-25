@@ -95,6 +95,8 @@ PG_FUNCTION_INFO_V1_RECTYPE(autodiff_l1_2, autodiff_record_type);
 PG_FUNCTION_INFO_V1_RECTYPE(autodiff_l3, autodiff_record_type);
 PG_FUNCTION_INFO_V1_RECTYPE(autodiff_l4, autodiff_record_type);
 PG_FUNCTION_INFO_V1_RECTYPE(autodiff_debug, autodiff_mult_record_type);
+PG_FUNCTION_INFO_V1_RECTYPE(autodiff_debug2, autodiff_mult_record_type);
+PG_FUNCTION_INFO_V1_RECTYPE(autodiff_debug3, autodiff_record_type);
 
 Datum autodiff_l1_2_internal(PG_FUNCTION_ARGS)
 {
@@ -820,6 +822,36 @@ Datum autodiff_debug(PG_FUNCTION_ARGS)
     return Int32GetDatum(1);
 }
 
+Datum autodiff_debug2(PG_FUNCTION_ARGS)
+{
+    ReturnSetInfo *rsinfo = (ReturnSetInfo *)fcinfo->resultinfo;
+    LambdaExpr *lambda = PG_GETARG_LAMBDA(0);
+    LambdaExpr *lambda2 = PG_GETARG_LAMBDA(1);
+
+    llvm_enter_tmp_context(rsinfo->econtext->ecxt_estate);
+    ExecInitLambdaExpr((Node *)lambda, false, true);
+    ExecInitLambdaExpr((Node *)lambda2, false, true);
+    llvm_leave_tmp_context(rsinfo->econtext->ecxt_estate);
+
+    printf("length of derivatives for lambda1: %d\n", ExecGetLambdaDerivativesLength(lambda));
+    printf("length of derivatives for lambda2: %d\n", ExecGetLambdaDerivativesLength(lambda2));
+
+    return Int32GetDatum(1);
+}
+
+Datum autodiff_debug3(PG_FUNCTION_ARGS)
+{
+    ReturnSetInfo *rsinfo = (ReturnSetInfo *)fcinfo->resultinfo;
+    LambdaExpr *lambda = PG_GETARG_LAMBDA(1);
+
+    llvm_enter_tmp_context(rsinfo->econtext->ecxt_estate);
+    ExecInitLambdaExpr((Node *)lambda, false, true);
+    llvm_leave_tmp_context(rsinfo->econtext->ecxt_estate);
+
+    printf("length of derivatives for lambda1: %d\n", ExecGetLambdaDerivativesLength(lambda));
+
+    return Int32GetDatum(1);
+}
 
 //Some commented code, might be useful later(print matrix, different version of l4, etc)
 /*{

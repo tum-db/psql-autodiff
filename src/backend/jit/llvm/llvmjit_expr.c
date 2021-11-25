@@ -4347,8 +4347,8 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, 		/* Builder containing the pr
 			mat_mul_params_x[2] = l_pbool_const(false);
 			mat_mul_params_x[3] = l_pbool_const(true);
 
-			mat_mul_params_y[0] = seed;
-			mat_mul_params_y[1] = x;
+			mat_mul_params_y[0] = x;
+			mat_mul_params_y[1] = seed;
 			mat_mul_params_y[2] = l_pbool_const(true);
 			mat_mul_params_y[3] = l_pbool_const(false);
 
@@ -6009,8 +6009,8 @@ llvm_compile_simple_deriv_subtree(LLVMBuilderRef b,			    /* Builder containing 
 			mat_mul_params_x[2] = l_pbool_const(false);
 			mat_mul_params_x[3] = l_pbool_const(true);
 
-			mat_mul_params_y[0] = seed;
-			mat_mul_params_y[1] = x;
+			mat_mul_params_y[0] = x;
+			mat_mul_params_y[1] = seed;
 			mat_mul_params_y[2] = l_pbool_const(true);
 			mat_mul_params_y[3] = l_pbool_const(false);
 

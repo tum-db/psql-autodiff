@@ -321,10 +321,13 @@ Datum ExecDeriveLambdaExpr(ExprState *expression, ExprContext *econtext, bool *i
 	Datum seed;
 	int dims[2] = {1, 1};
 	if (expression->lambdaContainsMatrix) {
-		seed = createArray(dims, 1.0, false);
+		// seed = createArray(dims, 1.0, false);
+		seed = createSeedArray(result);
 	} else {
 		seed = Float8GetDatum(1.0);
 	}
+
+	printf("begin of derivation\n");
 
 	//reverse through steps to derive each var
 	ExecLambdaDeriveSubtree(expression, expression->steps_len - 2, seed, derivatives);
@@ -652,8 +655,10 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 			Datum x = state->steps[fetchIndex].d.func.fcinfo_data->arg[0];
 			Datum y = state->steps[fetchIndex].d.func.fcinfo_data->arg[1];
 
+			printf("deriv of newSeedX\n");
 			Datum newSeedX = matrix_mul_internal(seed, y, false, true);
-			Datum newSeedY = matrix_mul_internal(seed, x, true, false);
+			printf("deriv of newSeedY\n");
+			Datum newSeedY = matrix_mul_internal(x, seed, true, false);
 
 			int startingPointForY = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedY, derivatives);
 			int stepIndexAfterX = ExecLambdaDeriveSubtree(state, startingPointForY, newSeedX, derivatives);
@@ -693,8 +698,9 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 		case 9004: /* matrix element-wise relu */
 		{
 			Datum x = state->steps[fetchIndex].d.func.fcinfo_data->arg[0];
-
+			printf("elem-wise RELU, dims seed: [%d, %d]; dims x: [%d, %d]\n", ARR_DIMS(DatumGetArrayTypeP(seed))[0], ARR_DIMS(DatumGetArrayTypeP(seed))[1], ARR_DIMS(DatumGetArrayTypeP(x))[0], ARR_DIMS(DatumGetArrayTypeP(x))[1]);
 			Datum newSeedX = matrix_elem_mult(seed, relu_m_derive(x));
+			printf("result of RELU dims: [%d, %d]\n", ARR_DIMS(DatumGetArrayTypeP(newSeedX))[0], ARR_DIMS(DatumGetArrayTypeP(newSeedX))[1]);
 
 			int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
 			resultFetchIndex = stepsAfterSubtree;

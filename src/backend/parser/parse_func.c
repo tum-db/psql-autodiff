@@ -823,7 +823,7 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 			TupleDesc tupdesc = CreateTemplateTupleDesc(
 				list_length(qtree->targetList), false);
 
-			printf("tupdesc size in parse_func.c: %d\n", list_length(qtree->targetList));
+			// printf("tupdesc size in parse_func.c: %d\n", list_length(qtree->targetList));
 
 			foreach(n, qtree->targetList)
 			{
@@ -846,6 +846,8 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 
 	if (list_length(ltiList) > 0)
 	{
+		int argCounter = 0;
+		ListCell *subtableInfo = list_head(ltiList);
 		foreach(l, fargs)
 		{
 			ListCell *lambdaParamName;
@@ -853,7 +855,6 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 
 			if (IsA(arg, LambdaExpr)) {
 				int argPos = 0;
-				ListCell* subtableInfo = list_head(ltiList);
 				List* argCheckList = NIL;
 				LambdaExpr *lambda = castNode(LambdaExpr, arg);
 				LambdaExpr *parentLambda = pstate->p_current_lambda;
@@ -878,25 +879,26 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 											exprLocation((Node *) lambda))));
 					}
 
-					{
-						ListCell* tmp;
-						foreach(tmp, ltiList) {
-							printf("tupleDesc->natts: %d\n", ((TupleDesc)tmp->data.ptr_value)->natts);
-						}
-					}
+					// {
+					// 	ListCell* tmp;
+					// 	foreach(tmp, ltiList) {
+					// 		printf("tupleDesc->natts: %d\n", ((TupleDesc)tmp->data.ptr_value)->natts);
+					// 	}
+					// }
 
-					printf("argPos: %d <-> list_length of ltiList: %d\n", argPos, list_length(ltiList) - 1);
-
-					if (argPos < list_length(ltiList) - 1)
-						subtableInfo = lnext(subtableInfo);
+					// printf("argPos: %d <-> list_length of ltiList: %d\n", argPos, list_length(ltiList) - 1);
 
 					lambda->argtypes = lappend(lambda->argtypes,
 						lfirst(subtableInfo));
 
-					printf("size of added tupDesc in IsA(Lambda) in parse_func.c: %d\n",
-						   ((TupleDesc)((subtableInfo)->data.ptr_value))->natts);
+					// printf("size of added tupDesc in IsA(Lambda) in parse_func.c: %d\n",
+					// 	   ((TupleDesc)((subtableInfo)->data.ptr_value))->natts);
+
+					if (argCounter < list_length(ltiList) - 1)
+						subtableInfo = lnext(subtableInfo);
 
 					argPos++;
+					argCounter++;
 				}
 
 				lambda->expr = (Expr *) transformExpr(pstate, (Node *) lambda->expr,

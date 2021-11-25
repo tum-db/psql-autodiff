@@ -22,14 +22,14 @@ create table nums(x float not null, y float not null, z float not null, a float 
 create table nums_numeric(x float not null, y float not null, z float not null);
 create table nums_label(x float not null, y float not null, z float not null);
 create table nums_null(x float, y float);
-create table nums_matrix(x double precision array not null, y double precision array not null);
+create table nums_matrix(x double precision array not null, y double precision array not null, a double precision array not null, b double precision array not null);
 create table points(x float not null, y float not null);
 create table pages(src float not null, dst float not null, tmp_x float not null, tmp_y float not null);
 
 insert into nums select generate_series(1, 100), generate_series(101, 200), generate_series(201, 300), generate_series(1, 100), generate_series(1, 100), generate_series(1, 100), generate_series(1, 100);
 insert into nums_numeric select generate_series(-2, -2), generate_series(5, 5), generate_series(12, 12);
 insert into nums_label select generate_series(2, 2), generate_series(4, 4), generate_series(5, 5);
-insert into nums_matrix values ('{{2,-4}, {6,8}, {2,2}}', '{{8,4,-2}, {4,2,1}}');
+insert into nums_matrix values ('{{2,-4}, {6,8}, {2,2}}', '{{8,4,-2, 1}, {4,2,1, 1}}', '{{1,2,3,4,5}, {1,2,3,4,5}, {1,2,3,4,5}, {1,2,3,4,5}}', '{{1,2}, {1,2}, {1,2}, {1,2}, {1,2}}');
 
 insert into nums_null select generate_series(1, 1), generate_series(2, 2);
 insert into nums_null select 1 as x, null as y;
@@ -84,11 +84,6 @@ returns setof record
 as '/home/clemens/masterarbeit/psql-autodiff/src/ext/autodiff_ext.so','autodiff_l4'
 language C STRICT;
 
-create or replace function autodiff_debug("lambda", lambdacursor, "lambda", lambdacursor, lambdacursor)
-returns int
-as '/home/clemens/masterarbeit/psql-autodiff/src/ext/autodiff_ext.so','autodiff_debug'
-language C STRICT;
-
 create or replace function autodiff_t_l1_2(lambdacursor, "lambda")
 returns setof record
 as '/home/clemens/masterarbeit/psql-autodiff/src/ext/autodiff_timing.so','autodiff_t_l1_2'
@@ -119,8 +114,27 @@ returns setof record
 as '/home/clemens/masterarbeit/psql-autodiff/src/ext/gradient_desc_ext.so','gradient_descent_l4'
 language C STRICT;
 
-set jit='off';
---select * from autodiff_debug((lambda(a)(a.x * 2)), (select * from points), (lambda(x,y)(x.y * y.z)), (select * from nums_label), (select * from nums));
+--Testing grounds of the new tupleDescriptor aquisition
+
+-- create or replace function autodiff_debug("lambda", lambdacursor, "lambda", lambdacursor, lambdacursor)
+-- returns int
+-- as '/home/clemens/masterarbeit/psql-autodiff/src/ext/autodiff_ext.so','autodiff_debug'
+-- language C STRICT;
+
+-- create or replace function autodiff_debug2("lambda", "lambda", lambdacursor)
+-- returns int
+-- as '/home/clemens/masterarbeit/psql-autodiff/src/ext/autodiff_ext.so','autodiff_debug2'
+-- language C STRICT;
+
+-- create or replace function autodiff_debug3(lambdacursor, "lambda")
+-- returns int
+-- as '/home/clemens/masterarbeit/psql-autodiff/src/ext/autodiff_ext.so','autodiff_debug3'
+-- language C STRICT;
+
+-- set jit='off';
+-- select * from autodiff_debug((lambda(a)(a.x * 2)), (select * from points), (lambda(x,y)(x.y * y.z)), (select * from nums_label), (select * from nums));
+-- select * from autodiff_debug2((lambda(a)(a.x * 2)), (lambda(x)(x.y * 3)), (select * from nums_label));
+-- select * from autodiff_debug3((select * from points), (lambda(x)(x.y * 4)));
 
 
 --test all functions and run them with their corresponding datatables
@@ -140,8 +154,8 @@ set jit='off';
 -- select * from autodiff_l3(  (select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
 -- select * from autodiff_l4(  (select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
 
-set jit='off';
-select * from nums_matrix;
+-- set jit='off';
+-- select * from nums_matrix;
 -- select * from autodiff_l1_2((select x, y from nums_matrix), (lambda(a)(a.x))) limit 10; 
 
 -- select * from autodiff_l1_2((select x, y from nums_matrix), (lambda(a)(silu_m(a.x)))) limit 10;
@@ -152,7 +166,7 @@ select * from nums_matrix;
 -- select * from autodiff_l1_2((select x, y from nums_matrix), (lambda(a)(mat_mul(a.x, a.y)))) limit 10;
 -- select * from autodiff_l1_2((select x, y from nums_matrix), (lambda(a)(mat_mul(relu_m(a.x), a.y)))) limit 10;
 
-set jit='on';
+-- set jit='on';
 -- select * from autodiff_l1_2((select x, y from nums_matrix), (lambda(a)(a.x))) limit 10; 
 
 -- select * from autodiff_l1_2((select x, y from nums_matrix), (lambda(a)(silu_m(a.x)))) limit 10;
@@ -164,20 +178,20 @@ set jit='on';
 -- select * from autodiff_l1_2((select x, y from nums_matrix), (lambda(a)(mat_mul(relu_m(a.x), a.y)))) limit 10; 
 
 
-select * from autodiff_l3((select x, y from nums_matrix), (lambda(a)(a.x))) limit 10; 
+-- select * from autodiff_l3((select x, y from nums_matrix), (lambda(a)(a.x))) limit 10; 
 
-select * from autodiff_l3((select x, y from nums_matrix), (lambda(a)(silu_m(a.x)))) limit 10;
-select * from autodiff_l3((select x, y from nums_matrix), (lambda(a)(sigmoid_m(a.x)))) limit 10;
-select * from autodiff_l3((select x, y from nums_matrix), (lambda(a)(tanh_m(a.x)))) limit 10;
-select * from autodiff_l3((select x, y from nums_matrix), (lambda(a)(relu_m(a.x)))) limit 10;
+-- select * from autodiff_l3((select x, y from nums_matrix), (lambda(a)(silu_m(a.x)))) limit 10;
+-- select * from autodiff_l3((select x, y from nums_matrix), (lambda(a)(sigmoid_m(a.x)))) limit 10;
+-- select * from autodiff_l3((select x, y from nums_matrix), (lambda(a)(tanh_m(a.x)))) limit 10;
+-- select * from autodiff_l3((select x, y from nums_matrix), (lambda(a)(relu_m(a.x)))) limit 10;
 
-select * from autodiff_l3((select x, y from nums_matrix), (lambda(a)(mat_mul(a.x, a.y)))) limit 10;
-select * from autodiff_l3((select x, y from nums_matrix), (lambda(a)(mat_mul(relu_m(a.x), a.y)))) limit 10; 
+-- select * from autodiff_l3((select x, y from nums_matrix), (lambda(a)(mat_mul(a.x, a.y)))) limit 10;
+-- select * from autodiff_l3((select x, y from nums_matrix), (lambda(a)(mat_mul(relu_m(a.x), a.y)))) limit 10; 
 
 
--- set jit='on';
--- select * from autodiff_l3(  (select x, y from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, relu_m(a.y)), mat_mul(a.x, a.y))))) limit 10;
--- select * from autodiff_l1_2((select x, y from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, relu_m(a.y)), mat_mul(a.x, a.y))))) limit 10;
+set jit='off';
+-- select * from autodiff_l3(  (select x, y from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, relu_m(a.y)), a.x)))) limit 10;
+select * from autodiff_l1_2((select x, y, a from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, relu_m(a.y)), a.a)))) limit 10;
 -- select * from autodiff_l4(  (select x, y from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, relu_m(a.y)), mat_mul(a.x, a.y))))) limit 10;
 
 -- --Timing tests for comp vs exec

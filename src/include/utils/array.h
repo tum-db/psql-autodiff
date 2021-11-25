@@ -474,5 +474,6 @@ extern Datum relu_m_derive(Datum input);
 extern ArrayType *initResult(int ndims, int *dims, int *lbs);
 extern ArrayType *copyArray(Datum orgArray);
 extern Datum createArray(int *dims, float8 value, bool identityMatrix);
+extern Datum createSeedArray(Datum result);
 
 #endif							/* ARRAY_H */
