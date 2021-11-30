@@ -2042,7 +2042,7 @@ Datum
  *		hyptan			- returns the hyperbolic tangent of arg1 (radians)
  */
 Datum
-	hyptan(PG_FUNCTION_ARGS)
+	tan_h(PG_FUNCTION_ARGS)
 {
 	float8 arg1 = PG_GETARG_FLOAT8(0);
 	float8 result;

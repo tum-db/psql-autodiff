@@ -3,6 +3,13 @@
  * matrix_ops.c
  *	  This file contains some support routines 
  *    required for matrix arithmetic functions.
+ *    Important: Because Postgres only passes Datum as an all-encompassing type, 
+ *               that does not save its type, Arrays, which have -1 as 
+ *               the first lbs, will be considered scalar values and only have a single item, 
+ *               which is that scalar itself.
+ *               This is such that the automatic differentiation can output scalars as operations results.
+ * 
+ *               Vectors are always 1D Nx1 Arrays, if one needs a 1xN Array, use 2D Arrays with dim[0] == 1
  *
  * IDENTIFICATION
  *	  src/backend/utils/adt/matrix_ops.c
@@ -28,167 +35,114 @@
  */
 Datum matrix_mul(PG_FUNCTION_ARGS)
 {
-    printf("begin of matrix_mul_external\n");
-    // The formal PostgreSQL array objects:
+    // printf("begin of matrix_mul_external\n");
+    //  The formal PostgreSQL array objects:
     ArrayType *a1, *a2, *ret;
-
-    // The array element types:
-    Oid type1, type2;
-
-    // The array element type widths :
-    int16 typeWidth1, typeWidth2;
-
-    // The array element type "is passed by value" flags (not used, should always be true):
-    bool typeByValue1, typeByValue2;
-
-    // The array element type alignment codes (not used):
-    char typeAlignmentCode1, typeAlignmentCode2;
-
-    // The array contents, as PostgreSQL "datum" objects:
-    float8 *retContent;
 
     // The size of each array:
     int length1, length2;
 
-    if (PG_ARGISNULL(0))
+    if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
     {
-        ereport(ERROR, (errmsg("Null arrays not accepted")));
+        ereport(ERROR, (errmsg("Matrix Multiplication external: Null pointer passed as Matrix!")));
     }
 
     // Extract the PostgreSQL arrays from the parameters passed to this function call.
     a1 = PG_GETARG_ARRAYTYPE_P(0);
     a2 = PG_GETARG_ARRAYTYPE_P(1);
 
-    if (ARR_NDIM(a1) == 0 || ARR_NDIM(a2) == 0)
-    {
-        PG_RETURN_NULL();
-    }
-
-    if (array_contains_nulls(a1))
-    {
-        ereport(ERROR, (errmsg("Array left contains null elements")));
-    }
-
-    if (array_contains_nulls(a2))
-    {
-        ereport(ERROR, (errmsg("Array right contains null elements")));
-    }
-
-    if (ARR_NDIM(a2) != 1 && ARR_NDIM(a2) != 2)
-    {
-        ereport(ERROR, (errmsg("Array right dimensions wrong!")));
-    }
-
-    if (ARR_NDIM(a1) != 1 && ARR_NDIM(a1) != 2)
-    {
-        ereport(ERROR, (errmsg("Array left dimensions wrong!")));
-    }
-
     int *dim1 = ARR_DIMS(a1);
     int *dim2 = ARR_DIMS(a2);
-    int lbs[2];
+    int lbs[2] = {1, 1};
+    int dims[2] = {1, 1};
+    int ndim_res = 2;
 
-    if (ARR_NDIM(a1) == 2 && ARR_NDIM(a2) == 2 && dim1[1] != dim2[0])
+    int dima, dimb, dimc;
+    dima = 1, dimb = 1, dimc = 1;
+
+    length1 = ArrayGetNItems(ARR_NDIM(a1), ARR_DIMS(a1));
+    length2 = ArrayGetNItems(ARR_NDIM(a2), ARR_DIMS(a2));
+
+    // if one or both are scalars, use element-wise multiplication
+    if (isScalar(a1))
     {
-        ereport(ERROR, (errmsg("Matrix dimensions do not match!")));
+        ret = PG_GETARG_ARRAYTYPE_P_COPY(1);
+        float8 *data = (float8 *)ARR_DATA_PTR(ret);
+#pragma omp parallel for
+        for (int i = 0; i < length2; i++)
+        {
+            data[i] *= DatumGetFloat8(((Datum *)ARR_DATA_PTR(a1))[0]);
+        }
+        // printf("MatA is scalar, MatB has dimensions: [%d, %d]\n", ARR_DIMS(ret)[0], ARR_DIMS(ret)[1]);
+        PG_RETURN_ARRAYTYPE_P(ret);
     }
-    if (ARR_NDIM(a1) == 1 && ARR_NDIM(a2) == 2 && dim1[0] != dim2[0])
+    if (isScalar(a2))
     {
-        ereport(ERROR, (errmsg("Matrix dimensions do not match!")));
+        ret = PG_GETARG_ARRAYTYPE_P_COPY(0);
+        float8 *data = (float8 *)ARR_DATA_PTR(ret);
+#pragma omp parallel for
+        for (int i = 0; i < length1; i++)
+        {
+            data[i] *= DatumGetFloat8(((Datum *)ARR_DATA_PTR(a2))[0]);
+        }
+        // printf("MatB is scalar, MatA has dimensions: [%d, %d]\n", ARR_DIMS(ret)[0], ARR_DIMS(ret)[1]);
+        PG_RETURN_ARRAYTYPE_P(ret);
     }
 
-    for (int i = 0; i < 2; i++)
+    if (ARR_NDIM(a1) == 1 && ARR_NDIM(a2) == 1)
     {
-        lbs[i] = 1;
+        ereport(ERROR, (errmsg("Matrix Multiplication Internal: Two column vectors can not be multiplied!")));
     }
 
-    // Determine the array element types.
-    type1 = ARR_ELEMTYPE(a1);
-    get_typlenbyvalalign(type1, &typeWidth1, &typeByValue1, &typeAlignmentCode1);
-    type2 = ARR_ELEMTYPE(a2);
-    get_typlenbyvalalign(type2, &typeWidth2, &typeByValue2, &typeAlignmentCode2);
+    // no matter the NDIM of MatA, dima will always be the first dimension of the result
+    dima = dim1[0];
+    dims[0] = dim1[0];
 
-    if (type1 != FLOAT8OID)
-    {
-        ereport(ERROR, (errmsg("Arrays must be SMALLINT, INTEGER, BIGINT, REAL, or DOUBLE PRECISION values")));
-    }
-    if (type2 != FLOAT8OID)
-    {
-        ereport(ERROR, (errmsg("Arrays must be SMALLINT, INTEGER, BIGINT, REAL, or DOUBLE PRECISION values")));
-    }
-
-    int dima = 1;
-    if (ARR_NDIM(a1) == 2)
-    {
-        dima = dim1[0];
-    }
-
-    int dimb = dim2[0];
-
-    int dimc = 1;
+    // if NDIM of MatB is 2, it is either a transposed vector(row-vector), or full matrix
+    // in either case, we create a result matrix, as both would result in matrices
+    //(except for 1xN * Nx1 case)
     if (ARR_NDIM(a2) == 2)
     {
+        dimb = dim2[0];
         dimc = dim2[1];
+        dims[1] = dim2[1];
+        ndim_res = 2;
+    }
+    else
+    {
+        dimb = dim2[0];
+        dimc = 1;
+        dims[1] = 1;
+        ndim_res = 1;
     }
 
-    int dims[2];
-    dims[0] = dima;
-    dims[1] = dimc;
-
-    retContent = palloc0(sizeof(float8) * dima * dimc);
-    double *arrayContent1f = (double *)palloc(sizeof(double) * dima * dimb);
-    double *arrayContent2Tf = (double *)palloc(sizeof(double) * dimb * dimc);
-    
-    length1 = ArrayGetNItems(ARR_NDIM(a1), ARR_DIMS(a1));
-    Datum *ps1 = (Datum *)ARR_DATA_PTR(a1);
-
-    length2 = ArrayGetNItems(ARR_NDIM(a2), ARR_DIMS(a2));
-    Datum *ps2 = (Datum *)ARR_DATA_PTR(a2);
-
-    Datum *ps;
-#pragma omp parallel
+    // 1xN * Nx1 case (create scalar)
+    if (dima == 1 && dimc == 1)
     {
-#pragma omp single nowait
-        {
-            //Already prepare result array!
-            ret = initResult(2, dims, lbs);
-            ps = (Datum *)ARR_DATA_PTR(ret);
-        }
+        lbs[0] = -1;
+        ndim_res = 1;
+    }
 
-#pragma omp for nowait
-        for (int pos = 0; pos < length1; pos++)
+    ret = initResult(ndim_res, dims, lbs);
+
+    float8 *ps1 = (float8 *)ARR_DATA_PTR(a1);
+    float8 *ps2 = (float8 *)ARR_DATA_PTR(a2);
+    float8 *ps;
+
+    ps = (float8 *)ARR_DATA_PTR(ret);
+#pragma omp parallel for
+    for (int i = 0; i < dima; i++)
+    {
+        for (int j = 0; j < dimb; j++)
         {
-            arrayContent1f[pos] = (double)DatumGetFloat8(ps1[pos]);
-        }
-#pragma omp for nowait
-        for (int pos = 0; pos < length2; pos++)
-        {
-            arrayContent2Tf[pos] = (double)DatumGetFloat8(ps2[pos]);
-        }
-#pragma omp for nowait
-        for (int pos = 0; pos < dima*dimc; pos++)
-        {
-            retContent[pos] = 0.0;
-        }
-#pragma omp barrier
-        int i, j, k;
-#pragma omp for
-        for(i = 0; i < dima; i++) {
-            for(j = 0; j < dimb; j++) {
-                for(k = 0; k < dimc; k++) {
-                    retContent[MAT_2D(i,k,dimc)] += arrayContent1f[MAT_2D(i,j,dimb)] * arrayContent2Tf[MAT_2D(j,k,dimc)];
-                }
+            for (int k = 0; k < dimc; k++)
+            {
+                ps[MAT_2D(i, k, dimc)] += ps1[MAT_2D(i, j, dimb)] * ps2[MAT_2D(j, k, dimc)];
+                // ps[MAT_2D(i, k, dimc)] += ps1[((transposeA) ? (MAT_2D(j, i, dima)) : (MAT_2D(i, j, dimb)))] * ps2[((transposeB) ? (MAT_2D(k, j, dimb)) : (MAT_2D(j, k, dimc)))];
             }
         }
-
-#pragma omp barrier
-#pragma omp for
-        for (int i = 0; i < dima * dimc; i++)
-        {
-            ps[i] = Float8GetDatumFast(retContent[i]);
-        }
     }
-    //printf("end of matrix_mul_external\n");
+    // printf("end of matrix_mul_external\n");
     PG_RETURN_ARRAYTYPE_P(ret);
 }
 
@@ -199,12 +153,9 @@ Datum matrix_mul(PG_FUNCTION_ARGS)
  */
 Datum matrix_mul_internal(Datum MatA, Datum MatB, const bool transposeA, const bool transposeB) 
 {
-    printf("begin of matrix_mul_internal\n");
+    //printf("begin of matrix_mul_internal\n");
     // The formal PostgreSQL array objects:
     ArrayType *a1, *a2, *ret;
-
-    // The array contents of result matrix:
-    float8 *retContent;
 
     // The size of each array:
     int length1, length2;
@@ -214,172 +165,97 @@ Datum matrix_mul_internal(Datum MatA, Datum MatB, const bool transposeA, const b
     }
 
     // Extract the PostgreSQL arrays from the parameters passed to this function call.
-    a1 = DatumGetArrayTypeP(MatA);
-    a2 = DatumGetArrayTypeP(MatB);
+    a1 = DatumGetArrayTypeP((transposeA) ? (matrix_transpose_internal(MatA)) : (MatA));
+    a2 = DatumGetArrayTypeP((transposeB) ? (matrix_transpose_internal(MatB)) : (MatB));
 
     int *dim1 = ARR_DIMS(a1);
     int *dim2 = ARR_DIMS(a2);
     int lbs[2] = {1, 1};
+    int dims[2] = {1, 1};
+    int ndim_res;
 
     int dima, dimb, dimc;
-    dima = 1;
-    dimb = 1;
-    dimc = 1;
+    dima = 1, dimb = 1, dimc = 1;
 
     length1 = ArrayGetNItems(ARR_NDIM(a1), ARR_DIMS(a1));
     length2 = ArrayGetNItems(ARR_NDIM(a2), ARR_DIMS(a2));
 
     // if one or both are scalars, use element-wise multiplication
-    if (length1 == 1)
+    if (isScalar(a1))
     {
-        if (transposeB)
-        {
-            ret = matrix_transpose_internal(MatB);
-        }
-        else
-        {
-            ret = copyArray(MatB);
-        }
+        ret = copyArray(MatB);
         float8 *data = (float8 *)ARR_DATA_PTR(ret);
+#pragma omp parallel for
         for (int i = 0; i < length2; i++)
         {
             data[i] *= DatumGetFloat8(((Datum *)ARR_DATA_PTR(a1))[0]);
         }
-        printf("MatA is scalar, MatB has dimensions: [%d, %d]\n", ARR_DIMS(ret)[0], ARR_DIMS(ret)[1]);
+        // printf("MatA is scalar, MatB has dimensions: [%d, %d]\n", ARR_DIMS(ret)[0], ARR_DIMS(ret)[1]);
         PG_RETURN_ARRAYTYPE_P(ret);
     }
-    if (length2 == 1)
+    if (isScalar(a2))
     {
-        if (transposeA)
-        {
-            ret = matrix_transpose_internal(MatA);
-        }
-        else
-        {
-            ret = copyArray(MatA);
-        }
+        ret = copyArray(MatA);
         float8 *data = (float8 *)ARR_DATA_PTR(ret);
+#pragma omp parallel for
         for (int i = 0; i < length1; i++)
         {
             data[i] *= DatumGetFloat8(((Datum *)ARR_DATA_PTR(a2))[0]);
         }
-        printf("MatB is scalar, MatA has dimensions: [%d, %d]\n", ARR_DIMS(ret)[0], ARR_DIMS(ret)[1]);
+        // printf("MatB is scalar, MatA has dimensions: [%d, %d]\n", ARR_DIMS(ret)[0], ARR_DIMS(ret)[1]);
         PG_RETURN_ARRAYTYPE_P(ret);
     }
 
-    if(ARR_NDIM(a1) == 2) {
-        if(transposeA) 
-        {
-            printf("MatA has dimensions: [%d, %d]\n", dim1[1], dim1[0]);
-            dima = dim1[1];
-            dimb = dim1[0];
-        } else 
-        {
-            printf("MatA has dimensions: [%d, %d]\n", dim1[0], dim1[1]);
-            dima = dim1[0];
-            dimb = dim1[1];
-        }
-    } else {
-        printf("MatA has dimensions: [%d]\n", dim1[0]);
-        if (transposeA)
-        {
-            dimb = dim1[0];
-        }
-        else
-        {
-            dima = dim1[0];
-        }
+    if(ARR_NDIM(a1) == 1 && ARR_NDIM(a2) == 1) {
+        ereport(ERROR, (errmsg("Matrix Multiplication Internal: Two column vectors can not be multiplied!")));
     }
 
+    //no matter the NDIM of MatA, dima will always be the first dimension of the result
+    dima = dim1[0];
+    dims[0] = dim1[0];
+
+    //if NDIM of MatB is 2, it is either a transposed vector(row-vector), or full matrix
+    //in either case, we create a result matrix, as both would result in matrices
+    //(except for 1xN * Nx1 case)
     if (ARR_NDIM(a2) == 2)
     {
-        if (transposeB)
-        {
-            printf("MatB has dimensions: [%d, %d]\n", dim2[1], dim2[0]);
-            if(dimb != dim2[1]) {
-                ereport(ERROR, (errmsg("Matrix Multiplication Internal: Mismatched array dimensions!")));
-            }
-            dimc = dim2[0];
-        }
-        else
-        {
-            printf("MatB has dimensions: [%d, %d]\n", dim2[0], dim2[1]);
-            if (dimb != dim2[0])
-            {
-                ereport(ERROR, (errmsg("Matrix Multiplication Internal: Mismatched array dimensions!")));
-            }
-            dimc = dim2[1];
-        }
+        dimb = dim2[0];
+        dimc = dim2[1];
+        dims[1] = dim2[1];
+        ndim_res = 2;
     }
     else
     {
-        printf("MatB has dimensions: [%d]\n", dim2[0]);
-        if (transposeB)
-        {
-            dimc = dim2[0];
-        }
+        dimb = dim2[0];
+        dimc = 1;
+        dims[1] = 1;
+        ndim_res = 1;
     }
 
-    int dims[2];
-    dims[0] = dima;
-    dims[1] = dimc;
+    //1xN * Nx1 case (create scalar)
+    if(dima == 1 && dimc == 1) {
+        lbs[0] = -1;
+        ndim_res = 1;
+    }
 
-    retContent = palloc0(sizeof(float8) * dima * dimc);
+    ret = initResult(ndim_res, dims, lbs);
 
-    double *arrayContent1f = (double *)palloc(sizeof(double) * length1);
-    double *arrayContent2Tf = (double *)palloc(sizeof(double) * length2);
+    float8 *ps1 = (float8 *)ARR_DATA_PTR(a1);
+    float8 *ps2 = (float8 *)ARR_DATA_PTR(a2);
+    float8 *ps;
 
     
-    Datum *ps1 = (Datum *)ARR_DATA_PTR(a1);
-    Datum *ps2 = (Datum *)ARR_DATA_PTR(a2);
-
-    Datum *ps;
-#pragma omp parallel shared(arrayContent1f, arrayContent2Tf, retContent)
+    ps = (float8 *)ARR_DATA_PTR(ret);
+#pragma omp parallel for
+    for (int i = 0; i < dima; i++)
     {
-#pragma omp single nowait
+        for (int j = 0; j < dimb; j++)
         {
-            //Already prepare result array!
-            ret = initResult(2, dims, lbs);
-            ps = (Datum *)ARR_DATA_PTR(ret);
-        }
-
-#pragma omp for nowait
-        for (int pos = 0; pos < length1; pos++)
-        {
-            arrayContent1f[pos] = DatumGetFloat8(ps1[pos]);
-        }
-#pragma omp for nowait
-        for (int pos = 0; pos < length2; pos++)
-        {
-            arrayContent2Tf[pos] = DatumGetFloat8(ps2[pos]);
-        }
-#pragma omp for nowait
-        for (int pos = 0; pos < dima * dimc; pos++)
-        {
-            retContent[pos] = 0.0;
-        }
-
-#pragma omp barrier
-        int i, j, k;
-#pragma omp for private(i, j, k)
-        for (i = 0; i < dima; i++)
-        {
-            for (j = 0; j < dimb; j++)
+            for (int k = 0; k < dimc; k++)
             {
-                for (k = 0; k < dimc; k++)
-                {
-                    retContent[MAT_2D(i, k, dimc)] 
-                                            += arrayContent1f[((transposeA) ? (MAT_2D(j, i, dima)) : (MAT_2D(i, j, dimb)))] 
-                                            *  arrayContent2Tf[((transposeB) ? (MAT_2D(k, j, dimb)) : (MAT_2D(j, k, dimc)))];
-                }
+                ps[MAT_2D(i, k, dimc)] += ps1[MAT_2D(i, j, dimb)] * ps2[MAT_2D(j, k, dimc)];
+                // ps[MAT_2D(i, k, dimc)] += ps1[((transposeA) ? (MAT_2D(j, i, dima)) : (MAT_2D(i, j, dimb)))] * ps2[((transposeB) ? (MAT_2D(k, j, dimb)) : (MAT_2D(j, k, dimc)))];
             }
-        }
-
-#pragma omp barrier
-#pragma omp for
-        for (int i = 0; i < dima * dimc; i++)
-        {
-            ps[i] = Float8GetDatumFast(retContent[i]);
         }
     }
     //printf("end of matrix_mul_internal\n");
@@ -387,11 +263,7 @@ Datum matrix_mul_internal(Datum MatA, Datum MatB, const bool transposeA, const b
 }
 
 /*
- * Adds Two matricies elementwise together inlace (a += b)
- *  
- * Fast implementation, forgoing all dimension, size and type checks, beware of undefined behaviour
- * NOTICE: Expects Base ArrayType passed as Pointer(cast to Datum), with elementtype being double/float8
- *         If MatA is a NullPointer, a copy of MatB will be returned 
+ * Adds Two matricies elementwise together inplace (a += b)
  */
 Datum matrix_add_inplace(Datum MatA, Datum MatB)
 {
@@ -407,25 +279,23 @@ Datum matrix_add_inplace(Datum MatA, Datum MatB)
     length1 = ArrayGetNItems(ARR_NDIM(a1), ARR_DIMS(a1));
     length2 = ArrayGetNItems(ARR_NDIM(a2), ARR_DIMS(a2));
 
-    if (length1 == 1)
+    if (isScalar(a1))
     {
-        a1 = copyArray(MatB);
-
-        Datum *data = (Datum *)ARR_DATA_PTR(a2);
         Datum elem = ((Datum *)ARR_DATA_PTR(a1))[0];
+        a1 = copyArray(MatB);
+        Datum *data = (Datum *)ARR_DATA_PTR(a1);
+#pragma omp parallel for
         for(int i = 0; i < length2; i++) {
             data[i] = Float8GetDatum(DatumGetFloat8(data[i]) + DatumGetFloat8(elem));
         }
-
         //printf("end of matrix_add_inplace\n");
         PG_RETURN_ARRAYTYPE_P(a1);
     }
-    if (length2 == 1)
+    if (isScalar(a2))
     {
-        a1 = copyArray(MatA);
-
         Datum *data = (Datum *)ARR_DATA_PTR(a1);
         Datum elem = ((Datum *)ARR_DATA_PTR(a2))[0];
+#pragma omp parallel for
         for (int i = 0; i < length2; i++)
         {
             data[i] = Float8GetDatum(DatumGetFloat8(data[i]) + DatumGetFloat8(elem));
@@ -433,6 +303,16 @@ Datum matrix_add_inplace(Datum MatA, Datum MatB)
 
         //printf("end of matrix_add_inplace\n");
         PG_RETURN_ARRAYTYPE_P(a1);
+    }
+
+    if(ARR_NDIM(a1) != ARR_NDIM(a2)) {
+        ereport(ERROR, (errmsg("Matrix element-wise addition(inplace): Number of dimensions mismatched!")));
+    }
+    for(int i = 0; i < ARR_NDIM(a1); i++) {
+        if (ARR_DIMS(a1)[i] != ARR_DIMS(a2)[i])
+        {
+            ereport(ERROR, (errmsg("Matrix element-wise addition(inplace): dimension %d mismatched!", i + 1)));
+        }
     }
 
     Datum *ps1 = (Datum *)ARR_DATA_PTR(a1);
@@ -449,15 +329,25 @@ Datum matrix_add_inplace(Datum MatA, Datum MatB)
 }
 
 /*
- * Multiply two matrices element-wise and return product as new stand-alone matrix(to avert pointer issues)
+ * Multiply two matrices element-wise and return product as new matrix
  */
-Datum matrix_elem_mult(Datum matA, Datum matB) {
-    printf("begin of matrix_elem_mult\n");
+Datum matrix_elem_mult_external(PG_FUNCTION_ARGS)
+{
+    return matrix_elem_mult(PG_GETARG_DATUM(0), PG_GETARG_DATUM(1));
+}
+
+/*
+ * Multiply two matrices element-wise and return product as new matrix
+ */
+Datum matrix_elem_mult(Datum matA, Datum matB)
+{
+    //printf("begin of matrix_elem_mult\n");
     ArrayType *a, *b, *ret;
     int ndims, length1, length2;
     int *dims;
 
-    if (DatumGetPointer(matA) == NULL || DatumGetPointer(matB) == NULL) {
+    if (DatumGetPointer(matA) == NULL || DatumGetPointer(matB) == NULL)
+    {
         ereport(ERROR, (errmsg("Matrix element-wise Multiplication: MatrixPointers are null")));
     }
 
@@ -467,28 +357,32 @@ Datum matrix_elem_mult(Datum matA, Datum matB) {
     length1 = ArrayGetNItems(ARR_NDIM(a), ARR_DIMS(a));
     length2 = ArrayGetNItems(ARR_NDIM(b), ARR_DIMS(b));
 
-    if(length1 == 1) {
+    if (isScalar(a))
+    {
         ret = copyArray(matB);
 
         Datum *data = (Datum *)ARR_DATA_PTR(ret);
         const Datum elem = ((Datum *)ARR_DATA_PTR(a))[0];
-
-        for(int i = 0; i < length2; i++) {
+#pragma omp parallel for
+        for (int i = 0; i < length2; i++)
+        {
             data[i] = Float8GetDatum(DatumGetFloat8(elem) * DatumGetFloat8(data[i]));
         }
-        //printf("end of matrix_elem_mult\n");
+        // printf("end of matrix_elem_mult\n");
         PG_RETURN_ARRAYTYPE_P(ret);
-    } else if(length2 == 1) {
+    }
+    else if (isScalar(b))
+    {
         ret = copyArray(matA);
 
         Datum *data = (Datum *)ARR_DATA_PTR(ret);
         const Datum elem = ((Datum *)ARR_DATA_PTR(b))[0];
-
+#pragma omp parallel for
         for (int i = 0; i < length1; i++)
         {
             data[i] = Float8GetDatum(DatumGetFloat8(elem) * DatumGetFloat8(data[i]));
         }
-        //printf("end of matrix_elem_mult\n");
+        // printf("end of matrix_elem_mult\n");
         PG_RETURN_ARRAYTYPE_P(ret);
     }
 
@@ -498,8 +392,10 @@ Datum matrix_elem_mult(Datum matA, Datum matB) {
     {
         ereport(ERROR, (errmsg("Matrix element-wise Multiplication: Number of dimensions mismatched!")));
     }
-    for(int i = 0; i < ndims; i++) {
-        if(dims[i] != ARR_DIMS(b)[i]) {
+    for (int i = 0; i < ndims; i++)
+    {
+        if (dims[i] != ARR_DIMS(b)[i])
+        {
             ereport(ERROR, (errmsg("Matrix element-wise Multiplication: Matrices are mismatched!")));
         }
     }
@@ -511,11 +407,117 @@ Datum matrix_elem_mult(Datum matA, Datum matB) {
     Datum *b_data = (Datum *)ARR_DATA_PTR(b);
 
 #pragma omp parrallel for
-    for (int i = 0; i < ArrayGetNItems(ARR_NDIM(a), ARR_DIMS(a)); i++) {
+    for (int i = 0; i < ArrayGetNItems(ARR_NDIM(a), ARR_DIMS(a)); i++)
+    {
         ret_data[i] = Float8GetDatum(DatumGetFloat8(a_data[i]) * DatumGetFloat8(b_data[i]));
     }
-    //printf("end of matrix_elem_mult\n");
+    // printf("end of matrix_elem_mult\n");
     PG_RETURN_ARRAYTYPE_P(ret);
+}
+
+/*
+ * Subtract matrix from matrix and return result as new matrix
+ */
+Datum mat_sub_mm(PG_FUNCTION_ARGS)
+{
+    ArrayType *ret, *a1, *a2;
+    a1 = PG_GETARG_ARRAYTYPE_P(0);
+    a2 = PG_GETARG_ARRAYTYPE_P(1);
+
+    if(ARR_NDIM(a1) != ARR_NDIM(a2)) {
+        printf("NDIM_a1: %d\nNDIM_a2: %d\n", ARR_NDIM(a1), ARR_NDIM(a2));
+        ereport(ERROR, (errmsg("Matrix element-wise Subtraction: Number of dimensions mismatched!")));
+    }
+    for(int i = 0; i < ARR_NDIM(a1); i++) {
+        if(ARR_DIMS(a1)[i] != ARR_DIMS(a2)[i]) {
+            ereport(ERROR, (errmsg("Matrix element-wise Subtraction: Dimensions mismatched!")));
+        }
+    }
+
+    ret = initResult(ARR_NDIM(a1), ARR_DIMS(a1), ARR_LBOUND(a1));
+    float8 *retData = (float8 *)ARR_DATA_PTR(ret);
+    float8 *a1Data = (float8 *)ARR_DATA_PTR(a1);
+    float8 *a2Data = (float8 *)ARR_DATA_PTR(a2);
+
+#pragma omp parallel for
+    for (int i = 0; i < ArrayGetNItems(ARR_NDIM(ret), ARR_DIMS(ret)); i++) {
+        retData[i] = a1Data[i] - a2Data[i];
+    }
+
+    PG_RETURN_ARRAYTYPE_P(ret);
+}
+
+/*
+ * Subtract scalar from matrix and return result as new matrix
+ */
+Datum mat_sub_ms(PG_FUNCTION_ARGS)
+{
+    ArrayType *ret, *a1;
+    float8 scalar;
+    a1 = PG_GETARG_ARRAYTYPE_P(0);
+    scalar = PG_GETARG_FLOAT8(1);
+
+    ret = initResult(ARR_NDIM(a1), ARR_DIMS(a1), ARR_LBOUND(a1));
+    float8 *retData = (float8 *)ARR_DATA_PTR(ret);
+
+#pragma omp parallel for
+    for (int i = 0; i < ArrayGetNItems(ARR_NDIM(ret), ARR_DIMS(ret)); i++)
+    {
+        retData[i] = retData[i] - scalar;
+    }
+
+    PG_RETURN_ARRAYTYPE_P(ret);
+}
+
+/*
+ * Subtract matrix from scalar and return result as new matrix
+ */
+Datum mat_sub_sm(PG_FUNCTION_ARGS)
+{
+    ArrayType *ret, *a1;
+    float8 scalar;
+    a1 = PG_GETARG_ARRAYTYPE_P(1);
+    scalar = PG_GETARG_FLOAT8(0);
+
+    ret = initResult(ARR_NDIM(a1), ARR_DIMS(a1), ARR_LBOUND(a1));
+    float8 *retData = (float8 *)ARR_DATA_PTR(ret);
+
+#pragma omp parallel for
+    for (int i = 0; i < ArrayGetNItems(ARR_NDIM(ret), ARR_DIMS(ret)); i++)
+    {
+        retData[i] = scalar - retData[i];
+    }
+
+    PG_RETURN_ARRAYTYPE_P(ret);
+}
+
+/*
+ * Multiply scalar with matrix elementwise and return result as new matrix
+ */
+Datum mat_mul_sm(PG_FUNCTION_ARGS)
+{
+    ArrayType *ret, *a1;
+    float8 scalar;
+    a1 = PG_GETARG_ARRAYTYPE_P(1);
+    scalar = PG_GETARG_FLOAT8(0);
+
+    ret = initResult(ARR_NDIM(a1), ARR_DIMS(a1), ARR_LBOUND(a1));
+    float8 *retData = (float8 *)ARR_DATA_PTR(ret);
+
+#pragma omp parallel for
+    for (int i = 0; i < ArrayGetNItems(ARR_NDIM(ret), ARR_DIMS(ret)); i++)
+    {
+        retData[i] = scalar * retData[i];
+    }
+
+    PG_RETURN_ARRAYTYPE_P(ret);
+}
+
+/*
+ * Return transposed copy of matrix/vector
+ */
+Datum mat_transpose_external(PG_FUNCTION_ARGS) {
+    return matrix_transpose_internal(PG_GETARG_ARRAYTYPE_P(0));
 }
 
 /*
@@ -530,6 +532,9 @@ Datum matrix_transpose_internal(Datum MatA)
 
     int dims[2], lbs[2];
 
+    if(isScalar(org)) {
+        return copyArray(MatA);
+    }
     if (ARR_NDIM(org) == 1)
     {
         dims[0] = 1;
@@ -538,6 +543,14 @@ Datum matrix_transpose_internal(Datum MatA)
         lbs[1] = ARR_LBOUND(org)[0];
         ret = initResult(2, dims, lbs);
         memcpy(ARR_DATA_PTR(ret), ARR_DATA_PTR(org), ArrayGetNItems(2, dims) * ALIGNOF_DOUBLE);
+        PG_RETURN_ARRAYTYPE_P(ret);
+    }
+    if ((ARR_NDIM(org) == 2 && ARR_DIMS(org)[0] == 1))
+    {
+        dims[0] = ARR_DIMS(org)[1];
+        lbs[0] = ARR_LBOUND(org)[1];
+        ret = initResult(1, dims, lbs);
+        memcpy(ARR_DATA_PTR(ret), ARR_DATA_PTR(org), dims[0] * ALIGNOF_DOUBLE);
         PG_RETURN_ARRAYTYPE_P(ret);
     }
     dims[0] = ARR_DIMS(org)[1];
@@ -561,7 +574,122 @@ Datum matrix_transpose_internal(Datum MatA)
 }
 
 /*
- *		softmax			- returns the softmax_cce of arg1 as inputs and arg2 as labels(one_hot)
+ * Aggregate average array over multiple matrices/vectors of same dimension
+ */
+Datum mat_avg(PG_FUNCTION_ARGS)
+{
+    //printf("mat_avg begin!\n");
+    if (AggCheckCallContext(fcinfo, NULL))
+    {
+        ArrayType *state_array, *new_val;
+
+        state_array = PG_GETARG_ARRAYTYPE_P(0);
+        //the data contained in state_array
+        Datum *state_data = (Datum *)ARR_DATA_PTR(state_array);
+        new_val = PG_GETARG_ARRAYTYPE_P(1);
+        // printf("mat_avg begin:\n %p\taddress of state_data[1]\n %p\t address of new_val\n", (void *) state_data[1], (void *) new_val);
+        // printf("mat_avg begin:\n %p\taddress of state_data[1]\n", (void *) state_data[1]);
+
+        if (DatumGetFloat8(state_data[0]) == 0.0) //if avg has not been invoked before, copy the current first array
+        {
+            state_data[1] = PointerGetDatum(copyArray(PointerGetDatum(new_val)));
+        }
+        else //otherwise add new_val on top of the current accumulate
+        {
+            state_data[1] = matrix_add_inplace(state_data[1], PointerGetDatum(new_val));
+            state_data[1] = PointerGetDatum(copyArray(state_data[1]));
+        }
+        //increment the counter
+        state_data[0] = Float8GetDatum(DatumGetFloat8(state_data[0]) + 1.0);
+        // printf("mat_avg end:\n %p\taddress of state_data[1]\n\n", (void *)state_data[1]);
+        PG_RETURN_ARRAYTYPE_P(state_array);
+    }
+    ereport(ERROR, (errmsg("Aggregate function AVG(float8[]) called in non-aggregate context!")));
+    PG_RETURN_NULL();
+}
+
+/*
+ * Aggregate function avg, final function (divide each element by the count of elements)
+ */
+Datum mat_avg_final(PG_FUNCTION_ARGS)
+{
+    if (AggCheckCallContext(fcinfo, NULL))
+    {
+        ArrayType *state_array, *avg_array;
+        state_array = PG_GETARG_ARRAYTYPE_P(0);
+
+        Datum *state_data = (Datum *)ARR_DATA_PTR(state_array);
+        if(DatumGetFloat8(state_data[0]) == 0.0) {
+            PG_RETURN_NULL();
+        } else {
+            avg_array = DatumGetArrayTypeP(state_data[1]);
+            float8 *avg_data = (float8 *) ARR_DATA_PTR(avg_array);
+#pragma omp parallel for
+            for(int i = 0; i < ArrayGetNItems(ARR_NDIM(avg_array), ARR_DIMS(avg_array)); i++) {
+                avg_data[i] /= DatumGetFloat8(state_data[0]); 
+            }
+            PG_RETURN_ARRAYTYPE_P(avg_array);
+        }
+    }
+    ereport(ERROR, (errmsg("Aggregate function AVG-final(float8[]) called in non-aggregate context!")));
+    PG_RETURN_NULL();
+}
+
+/*
+ * Return index of largest value
+ */
+Datum index_max(PG_FUNCTION_ARGS) {
+    if (PG_ARGISNULL(0))
+    {
+        ereport(ERROR, (errmsg("Index_max recieved null input!")));
+    }
+    ArrayType *input = PG_GETARG_ARRAYTYPE_P(0);
+    float8 *data = (float8 *)ARR_DATA_PTR(input);
+    float8 max_value = data[0];
+    int max_index = 0;
+    for(int i = 1; i < ArrayGetNItems(ARR_NDIM(input), ARR_DIMS(input)); i++) {
+        if(data[i] > max_value) {
+            max_value = data[i];
+            max_index = i;
+        }
+    }
+    PG_RETURN_INT32(max_index);
+}
+
+/*
+ * Softmax implementation with numerical stability
+ */
+Datum softmax(PG_FUNCTION_ARGS)
+{
+    ArrayType *array;
+
+    if(PG_ARGISNULL(0)) {
+        ereport(ERROR, (errmsg("Softmax recieved null input!")));
+    }
+
+    array = copyArray(PG_GETARG_DATUM(0));
+    float8 *data = (float8 *)ARR_DATA_PTR(array);
+    float8 max = 0.0, sum = 0.0;
+
+    for(int i = 0; i < ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array)); i++) 
+    {
+        if(max < data[i])
+            max = data[i];
+    }
+    for (int i = 0; i < ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array)); i++)
+    {
+        sum += exp(data[i] - max);
+    }
+#pragma omp parallel for
+    for (int i = 0; i < ArrayGetNItems(ARR_NDIM(array), ARR_DIMS(array)); i++)
+    {
+        data[i] = exp(data[i] - max) / sum;
+    }
+    PG_RETURN_ARRAYTYPE_P(array);
+}
+
+/*
+ *		softmax, returns the softmax_cce loss of arg1 as inputs and arg2 as labels(one_hot)
  */
 inline Datum softmax_cce(PG_FUNCTION_ARGS)
 {
@@ -584,23 +712,15 @@ Datum softmax_cce_internal(Datum inputs_in, Datum labels_in)
     int length = ArrayGetNItems(ARR_NDIM(input), ARR_DIMS(input));
     if (length != ArrayGetNItems(ARR_NDIM(labels), ARR_DIMS(labels)))
     {
-        ereport(ERROR, (errmsg("Softmax derivation: Arrays *labels* and *input* do not match!")));
+        ereport(ERROR, (errmsg("Softmax: Arrays *labels* and *input* do not match!")));
     }
-    if (ARR_NDIM(input) > 2)
+    if ((ARR_NDIM(input) > 2 && ARR_NDIM(input) <= 0) || (ARR_NDIM(input) == 2 && ARR_DIMS(input)[0] != 1))
     {
-        ereport(ERROR, (errmsg("Softmax derivation: Array *input* is not a vector!")));
+        ereport(ERROR, (errmsg("Softmax: Array *input* is not a vector!")));
     }
-    else if (ARR_NDIM(input) == 2 && (ARR_DIMS(input)[1] != 1 || ARR_DIMS(input)[0] != 1))
+    if ((ARR_NDIM(labels) > 2 && ARR_NDIM(labels) <= 0) || (ARR_NDIM(labels) == 2 && ARR_DIMS(labels)[0] != 1))
     {
-        ereport(ERROR, (errmsg("Softmax derivation: Array *input* is not a vector!")));
-    }
-    if (ARR_NDIM(labels) > 2)
-    {
-        ereport(ERROR, (errmsg("Softmax derivation: Array *labels* is not a vector!")));
-    }
-    else if (ARR_NDIM(labels) == 2 && (ARR_DIMS(labels)[1] != 1 || ARR_DIMS(labels)[0] != 1))
-    {
-        ereport(ERROR, (errmsg("Softmax derivation: Array *label* is not a vector!")));
+        ereport(ERROR, (errmsg("Softmax: Array *labels* is not a vector!")));
     }
     float8 *result = (float8 *)palloc0(length * sizeof(float8));
 
@@ -655,23 +775,15 @@ Datum softmax_cce_derive(Datum inputs_in, Datum labels_in)
     int length = ArrayGetNItems(ARR_NDIM(input_arr), ARR_DIMS(input_arr));
     if (length != ArrayGetNItems(ARR_NDIM(labels_arr), ARR_DIMS(labels_arr)))
     {
-        ereport(ERROR, (errmsg("Softmax derivation: Arrays *labels* and *input* do not match!")));
+        ereport(ERROR, (errmsg("Softmax Derivation: Arrays *labels* and *input* do not match!")));
     }
-    if (ARR_NDIM(input_arr) > 2) 
+    if ((ARR_NDIM(input_arr) > 2 && ARR_NDIM(input_arr) <= 0) || (ARR_NDIM(input_arr) == 2 && ARR_DIMS(input_arr)[0] != 1))
     {
-        ereport(ERROR, (errmsg("Softmax derivation: Array *input* is not a vector!")));
+        ereport(ERROR, (errmsg("Softmax Derivation: Array *input* is not a vector!")));
     }
-    else if (ARR_NDIM(input_arr) == 2 && (ARR_DIMS(input_arr)[1] != 1 || ARR_DIMS(input_arr)[0] != 1))
+    if ((ARR_NDIM(labels_arr) > 2 && ARR_NDIM(labels_arr) <= 0) || (ARR_NDIM(labels_arr) == 2 && ARR_DIMS(labels_arr)[0] != 1))
     {
-        ereport(ERROR, (errmsg("Softmax derivation: Array *input* is not a vector!")));
-    }
-    if (ARR_NDIM(labels_arr) > 2)
-    {
-        ereport(ERROR, (errmsg("Softmax derivation: Array *labels* is not a vector!")));
-    }
-    else if (ARR_NDIM(labels_arr) == 2 && (ARR_DIMS(labels_arr)[1] != 1 || ARR_DIMS(labels_arr)[0] != 1))
-    {
-        ereport(ERROR, (errmsg("Softmax derivation: Array *label* is not a vector!")));
+        ereport(ERROR, (errmsg("Softmax Derivation: Array *labels* is not a vector!")));
     }
     result_arr = initResult(ARR_NDIM(input_arr), ARR_DIMS(input_arr), ARR_LBOUND(input_arr));
     float8 *result = (float8 *)ARR_DATA_PTR(result_arr);
@@ -960,8 +1072,203 @@ Datum createArray(int *dims, const float8 value, const bool identityMatrix)
  */
 Datum createSeedArray(Datum result) {
     ArrayType *ret = copyArray(result);
+#pragma omp parallel for
     for(int i = 0; i < ArrayGetNItems(ARR_NDIM(ret), ARR_DIMS(ret)); i++) {
         ARR_DATA_PTR(ret)[i] = Float8GetDatum(1.0);
     }
     PG_RETURN_ARRAYTYPE_P(ret);
 }
+
+/*
+ * This creates a valid scalar in arrays representation(lbs[0] == -1)
+ */
+Datum createScalar(float8 value)
+{
+    int lbs[1], dims[1];
+    lbs[0] = -1;
+    dims[0] = 1;
+    ArrayType *ret = initResult(1, dims, lbs);
+    float8 *data = (float8 *)ARR_DATA_PTR(ret);
+    data[0] = value;
+    PG_RETURN_ARRAYTYPE_P(ret);
+}
+
+/*
+ * Check if array is scalar(lbs[0] == -1)
+ */
+bool isScalar(ArrayType *in) {
+    //Because C is C, we need an if, otherwise the postgres Bool gets converted
+    if(ARR_LBOUND(in)[0] == -1) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+// ------------------------------Beginning of old version of mat mul ---------------------------------------
+
+// // printf("begin of matrix_mul_external\n");
+// //  The formal PostgreSQL array objects:
+// ArrayType *a1, *a2, *ret;
+
+// // The array element types:
+// Oid type1, type2;
+
+// // The array element type widths :
+// int16 typeWidth1, typeWidth2;
+
+// // The array element type "is passed by value" flags (not used, should always be true):
+// bool typeByValue1, typeByValue2;
+
+// // The array element type alignment codes (not used):
+// char typeAlignmentCode1, typeAlignmentCode2;
+
+// // The array contents, as PostgreSQL "datum" objects:
+// float8 *retContent;
+
+// // The size of each array:
+// int length1, length2;
+
+// if (PG_ARGISNULL(0))
+// {
+//     ereport(ERROR, (errmsg("Null arrays not accepted")));
+// }
+
+// // Extract the PostgreSQL arrays from the parameters passed to this function call.
+// a1 = PG_GETARG_ARRAYTYPE_P(0);
+// a2 = PG_GETARG_ARRAYTYPE_P(1);
+
+// if (ARR_NDIM(a1) == 0 || ARR_NDIM(a2) == 0)
+// {
+//     PG_RETURN_NULL();
+// }
+
+// if (array_contains_nulls(a1))
+// {
+//     ereport(ERROR, (errmsg("Array left contains null elements")));
+// }
+
+// if (array_contains_nulls(a2))
+// {
+//     ereport(ERROR, (errmsg("Array right contains null elements")));
+// }
+
+// if (ARR_NDIM(a2) != 1 && ARR_NDIM(a2) != 2)
+// {
+//     ereport(ERROR, (errmsg("Array right dimensions wrong!")));
+// }
+
+// if (ARR_NDIM(a1) != 1 && ARR_NDIM(a1) != 2)
+// {
+//     ereport(ERROR, (errmsg("Array left dimensions wrong!")));
+// }
+
+// int *dim1 = ARR_DIMS(a1);
+// int *dim2 = ARR_DIMS(a2);
+
+// if (ARR_NDIM(a1) == 2 && dim1[1] != dim2[0])
+// {
+//     ereport(ERROR, (errmsg("Matrix dimensions do not match!")));
+// }
+// if (ARR_NDIM(a1) == 1 && dim1[0] != dim2[0])
+// {
+//     ereport(ERROR, (errmsg("Matrix dimensions do not match!")));
+// }
+
+// int lbs[2];
+// for (int i = 0; i < 2; i++)
+// {
+//     lbs[i] = 1;
+// }
+
+// // // Determine the array element types.
+// // type1 = ARR_ELEMTYPE(a1);
+// // get_typlenbyvalalign(type1, &typeWidth1, &typeByValue1, &typeAlignmentCode1);
+// // type2 = ARR_ELEMTYPE(a2);
+// // get_typlenbyvalalign(type2, &typeWidth2, &typeByValue2, &typeAlignmentCode2);
+
+// // if (type1 != FLOAT8OID)
+// // {
+// //     ereport(ERROR, (errmsg("Arrays must be SMALLINT, INTEGER, BIGINT, REAL, or DOUBLE PRECISION values")));
+// // }
+// // if (type2 != FLOAT8OID)
+// // {
+// //     ereport(ERROR, (errmsg("Arrays must be SMALLINT, INTEGER, BIGINT, REAL, or DOUBLE PRECISION values")));
+// // }
+
+// int dima = 1;
+// if (ARR_NDIM(a1) == 2)
+// {
+//     dima = dim1[0];
+// }
+
+// int dimb = dim2[0];
+
+// int dimc = 1;
+// if (ARR_NDIM(a2) == 2)
+// {
+//     dimc = dim2[1];
+// }
+
+// int dims[2];
+// dims[0] = dima;
+// dims[1] = dimc;
+
+// retContent = palloc0(sizeof(float8) * dima * dimc);
+// double *arrayContent1f = (double *)palloc(sizeof(double) * dima * dimb);
+// double *arrayContent2Tf = (double *)palloc(sizeof(double) * dimb * dimc);
+
+// length1 = ArrayGetNItems(ARR_NDIM(a1), ARR_DIMS(a1));
+// Datum *ps1 = (Datum *)ARR_DATA_PTR(a1);
+
+// length2 = ArrayGetNItems(ARR_NDIM(a2), ARR_DIMS(a2));
+// Datum *ps2 = (Datum *)ARR_DATA_PTR(a2);
+
+// Datum *ps;
+// #pragma omp parallel
+// {
+// #pragma omp single nowait
+//     {
+//         // Already prepare result array!
+//         ret = initResult(2, dims, lbs);
+//         ps = (Datum *)ARR_DATA_PTR(ret);
+//     }
+
+// #pragma omp for nowait
+//     for (int pos = 0; pos < length1; pos++)
+//     {
+//         arrayContent1f[pos] = (double)DatumGetFloat8(ps1[pos]);
+//     }
+// #pragma omp for nowait
+//     for (int pos = 0; pos < length2; pos++)
+//     {
+//         arrayContent2Tf[pos] = (double)DatumGetFloat8(ps2[pos]);
+//     }
+// #pragma omp for nowait
+//     for (int pos = 0; pos < dima * dimc; pos++)
+//     {
+//         retContent[pos] = 0.0;
+//     }
+// #pragma omp barrier
+//     int i, j, k;
+// #pragma omp for
+//     for (i = 0; i < dima; i++)
+//     {
+//         for (j = 0; j < dimb; j++)
+//         {
+//             for (k = 0; k < dimc; k++)
+//             {
+//                 retContent[MAT_2D(i, k, dimc)] += arrayContent1f[MAT_2D(i, j, dimb)] * arrayContent2Tf[MAT_2D(j, k, dimc)];
+//             }
+//         }
+//     }
+
+// #pragma omp barrier
+// #pragma omp for
+//     for (int i = 0; i < dima * dimc; i++)
+//     {
+//         ps[i] = Float8GetDatumFast(retContent[i]);
+//     }
+// }
+// // printf("end of matrix_mul_external\n");
+// PG_RETURN_ARRAYTYPE_P(ret);

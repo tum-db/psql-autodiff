@@ -66,7 +66,6 @@ static int llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, LLVMModuleRef mod, 
 static int llvm_compile_simple_deriv_subtree(LLVMBuilderRef b, LLVMModuleRef mod, ExprState *state,
 											 int fetchIndex, LLVMValueRef seed,
 											 LLVMValueRef derivatives, LLVMValueRef *funcVals, int *intermediates_pointer);
-int* scalar_dimension_pointer();
 
 #define CASE_FLOAT8_CFUNC_2ARG(oid, fname)                                                                   \
 	case oid:                                                                                                \
@@ -3147,17 +3146,6 @@ create_LifetimeEnd(LLVMModuleRef mod)
 }
 
 /*
- * This function returns a {1, 1} array as a pointer, as quality of life for generating the seed
- */
-int *scalar_dimension_pointer()
-{
-	int* dims_p = palloc0(2 * sizeof(int));
-	dims_p[0] = 1;
-	dims_p[1] = 1;
-	return dims_p;
-}
-
-/*
  * This function jit compiles LambdaExpr-ExprStates into 
  * usable LLVM-IR derivations, which will not be emitted,  
  * until the derive-function is called for the first time 
@@ -3291,31 +3279,32 @@ bool llvm_compile_expr_derive(ExprState *state)
 			LLVMBuildStore(b, v_tmpisnull, v_isnullp);
 
 			if(state->lambdaContainsMatrix) {
-				LLVMValueRef params[3], res_array_ptr, params_seed_dim_pointer;
-				LLVMTypeRef types[3], type_seed_dim_pointer;
+				LLVMValueRef params[1];
+				LLVMTypeRef types[1];
+				if ((ExecEvalStepOp(state, &(state->steps[state->steps_len - 2])) == 17 ||
+					 ExecEvalStepOp(state, &(state->steps[state->steps_len - 2])) == 18) &&
+					state->steps[state->steps_len - 2].d.func.finfo->fn_oid == 7801) // This checks, if expressionsstep is func-call and calls softmax as last call
+				{
+					types[0] = LLVMDoubleType();
+					params[0] = l_float8_const(1.0);
 
-				type_seed_dim_pointer = l_ptr(LLVMInt32Type());
-				params_seed_dim_pointer = l_int64_const(0);
+					v_seed = build_EvalCFunc(b, mod, "createScalar",
+											 (LLVMValueRef *)&params,
+											 (LLVMTypeRef *)&types,
+											 TypeDatum,
+											 1);
+				}
+				else
+				{
+					types[0] = TypeDatum;
+					params[0] = v_tmpvalue;
 
-				res_array_ptr = build_EvalCFunc(b, mod, "scalar_dimension_pointer",
-												(LLVMValueRef *)&params_seed_dim_pointer,
-												(LLVMTypeRef *)&type_seed_dim_pointer,
-												l_ptr(LLVMInt32Type()),
-												0);
-
-				types[0] = l_ptr(LLVMInt32Type());
-				types[1] = LLVMDoubleType();
-				types[2] = TypeParamBool;
-
-				params[0] = res_array_ptr;			//needs to be int dims[2] = {1, 1};
-				params[1] = l_float8_const(1.0);	//needs to be 1							see execExpr for this
-				params[2] = l_pbool_const(false);	//needs to be false     
-
-				v_seed = build_EvalCFunc(b, mod, "createArray", 
-										 (LLVMValueRef *)&params,
-										 (LLVMTypeRef *)&types,
-										 TypeDatum,
-										 3);
+					v_seed = build_EvalCFunc(b, mod, "createSeedArray",
+											 (LLVMValueRef *)&params,
+											 (LLVMTypeRef *)&types,
+											 TypeDatum,
+											 1);
+				}
 			} else {
 				v_seed = l_float8_const(1.0);
 			}
@@ -4574,31 +4563,32 @@ bool llvm_compile_simple_expr_derive(ExprState *state)
 			LLVMValueRef seed;
 			if (state->lambdaContainsMatrix)
 			{
-				LLVMValueRef params[3], res_array_ptr, params_seed_dim_pointer;
-				LLVMTypeRef types[3], type_seed_dim_pointer;
+				LLVMValueRef params[1];
+				LLVMTypeRef types[1];
+				if ((ExecEvalStepOp(state, &(state->steps[state->steps_len - 2])) == 17 ||
+					 ExecEvalStepOp(state, &(state->steps[state->steps_len - 2])) == 18) &&
+					state->steps[state->steps_len - 2].d.func.finfo->fn_oid == 7801) // This checks, if expressionsstep is func-call and calls softmax as last call
+				{
+					types[0] = LLVMDoubleType();
+					params[0] = l_float8_const(1.0);
 
-				type_seed_dim_pointer = l_ptr(LLVMInt32Type());
-				params_seed_dim_pointer = l_int64_const(0);
+					seed = build_EvalCFunc(b, mod, "createScalar",
+											 (LLVMValueRef *)&params,
+											 (LLVMTypeRef *)&types,
+											 TypeDatum,
+											 1);
+				}
+				else
+				{
+					types[0] = TypeDatum;
+					params[0] = registers[registerPointer - 1];
 
-				res_array_ptr = build_EvalCFunc(b, mod, "scalar_dimension_pointer",
-												(LLVMValueRef *)&params_seed_dim_pointer,
-												(LLVMTypeRef *)&type_seed_dim_pointer,
-												l_ptr(LLVMInt32Type()),
-												0);
-
-				types[0] = l_ptr(LLVMInt32Type());
-				types[1] = LLVMDoubleType();
-				types[2] = TypeParamBool;
-
-				params[0] = res_array_ptr;
-				params[1] = l_float8_const(1.0);
-				params[2] = l_pbool_const(false);
-
-				seed = build_EvalCFunc(b, mod, "createArray",
-										 (LLVMValueRef *)&params,
-										 (LLVMTypeRef *)&types,
-										 TypeDatum,
-										 3);
+					seed = build_EvalCFunc(b, mod, "createSeedArray",
+											 (LLVMValueRef *)&params,
+											 (LLVMTypeRef *)&types,
+											 TypeDatum,
+											 1);
+				}
 			}
 			else
 			{
@@ -4607,8 +4597,8 @@ bool llvm_compile_simple_expr_derive(ExprState *state)
 
 			funcInputPointer--;
 			llvm_compile_simple_deriv_subtree(b, mod, state, state->steps_len - 2, seed, v_derivatives, intermediate_vals, &funcInputPointer);
-			LLVMBuildRet(b, LLVMBuildZExtOrBitCast(b, registers[registerPointer - 1], TypeDatum, ""));
 
+			LLVMBuildRet(b, LLVMBuildZExtOrBitCast(b, registers[registerPointer - 1], TypeDatum, ""));
 			break;
 		}
 

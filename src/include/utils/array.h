@@ -453,9 +453,18 @@ extern void deconstruct_expanded_array(ExpandedArrayHeader *eah);
  */
 extern Datum matrix_mul(PG_FUNCTION_ARGS);
 extern Datum matrix_mul_internal(Datum MatA, Datum MatB, bool transposeA, bool transposeB);
+extern Datum mat_transpose_external(PG_FUNCTION_ARGS);
 extern Datum matrix_transpose_internal(Datum MatA);
+extern Datum mat_avg(PG_FUNCTION_ARGS);
+extern Datum mat_avg_final(PG_FUNCTION_ARGS);
 extern Datum matrix_add_inplace(Datum MatA, Datum MatB);
+extern Datum matrix_elem_mult_external(PG_FUNCTION_ARGS);
 extern Datum matrix_elem_mult(Datum matA, Datum matB);
+extern Datum mat_sub_mm(PG_FUNCTION_ARGS);
+extern Datum mat_sub_ms(PG_FUNCTION_ARGS);
+extern Datum mat_sub_sm(PG_FUNCTION_ARGS);
+extern Datum mat_mul_sm(PG_FUNCTION_ARGS);
+extern Datum softmax(PG_FUNCTION_ARGS);
 extern Datum softmax_cce(PG_FUNCTION_ARGS);
 extern Datum softmax_cce_internal(Datum inputs_in, Datum labels_in);
 extern Datum softmax_cce_derive(Datum inputs_in, Datum labels_in);
@@ -475,5 +484,8 @@ extern ArrayType *initResult(int ndims, int *dims, int *lbs);
 extern ArrayType *copyArray(Datum orgArray);
 extern Datum createArray(int *dims, float8 value, bool identityMatrix);
 extern Datum createSeedArray(Datum result);
+extern Datum createScalar(float8 value);
+extern bool isScalar(ArrayType *in);
+extern Datum index_max(PG_FUNCTION_ARGS);
 
 #endif							/* ARRAY_H */

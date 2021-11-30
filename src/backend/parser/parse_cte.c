@@ -760,8 +760,10 @@ checkWellFormedRecursionWalker(Node *node, CteState *cstate)
 
 			/* No, could be a reference to the query level we are working on */
 			mycte = cstate->items[cstate->curitem].cte;
+			//++(cstate->selfrefcount);
 			if (strcmp(rv->relname, mycte->ctename) == 0)
 			{
+				//printf("cstate->selfref: %d\n", cstate->selfrefcount + 1);
 				/* Found a recursive reference to the active query */
 				if (cstate->context != RECURSION_OK)
 					ereport(ERROR,

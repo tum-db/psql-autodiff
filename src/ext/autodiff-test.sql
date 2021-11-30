@@ -1,7 +1,6 @@
 --meta flags, jit needs to be on, 'load llvm' loads dependencies
 set jit='on';
 load 'llvmjit.so';
-set autocommit=0;
 
 -- set jit_above_cost = 0;             --enforce jit-usage
 -- set jit_inline_above_cost = 0;      --enforce jit-usage
@@ -189,9 +188,9 @@ language C STRICT;
 -- select * from autodiff_l3((select x, y from nums_matrix), (lambda(a)(mat_mul(relu_m(a.x), a.y)))) limit 10; 
 
 
-set jit='off';
+-- set jit='off';
 -- select * from autodiff_l3(  (select x, y from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, relu_m(a.y)), a.x)))) limit 10;
-select * from autodiff_l1_2((select x, y, a from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, relu_m(a.y)), a.a)))) limit 10;
+-- select * from autodiff_l1_2((select x, y, a from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, relu_m(a.y)), a.a)))) limit 10;
 -- select * from autodiff_l4(  (select x, y from nums_matrix), (lambda(a)(mat_mul(mat_mul(a.x, relu_m(a.y)), mat_mul(a.x, a.y))))) limit 10;
 
 -- --Timing tests for comp vs exec
@@ -243,6 +242,19 @@ select * from autodiff_l1_2((select x, y, a from nums_matrix), (lambda(a)(mat_mu
 --            (a2- 0.001 * avg(d_a2))::float as a2,
 --            (b - 0.001 * avg(d_b))::float as b
 --     from autodiff_l1_2((select * from gd, (select * from data limit 10) as my_alias_2 where id < 5), 
+--                        (lambda(x)((x.a1*x.x1 + x.a2*x.x2 + x.b-x.y2)^2)))
+--     group by id, a1, a2, b
+-- )
+-- select * from gd;
+
+-- with recursive gd as (
+-- 	select 1, 1::float, 1::float, 1::float
+-- union all
+--     select (id + 1)::integer as id,
+--            (a1- 0.001 * avg(d_a1))::float as a1,
+--            (a2- 0.001 * avg(d_a2))::float as a2,
+--            (b - 0.001 * avg(d_b))::float as b
+--     from autodiff_l1_2((select * from (with gd_inner as (select * from gd) select * from gd_inner, (select * from data limit 10) as my_alias_2 where id < 5)t), 
 --                        (lambda(x)((x.a1*x.x1 + x.a2*x.x2 + x.b-x.y2)^2)))
 --     group by id, a1, a2, b
 -- )
@@ -329,3 +341,167 @@ select * from autodiff_l1_2((select x, y, a from nums_matrix), (lambda(a)(mat_mu
 -- select d_a1, d_a2, d_a3
 -- from autodiff_l4((select * from gd, (select * from data limit 1000) as pg_alias), 
 --                       lambda(x)((x.a1*x.x1 + x.a2*x.x2 + x.a3*x.x3 + x.a4*x.x4 + x.a5*x.x5 + x.a6*x.x6 + x.a7*x.x7 + x.a8*x.x8 + x.b - x.y8)^2)) limit 1;
+
+
+
+-- select array_agg(array_agg) from generate_series(1,4), (select array_agg(random()) from generate_series(1,20)) as foo;
+-- select array_agg(array_agg) from generate_series(1,20), (select array_agg(random()) from generate_series(1,3)) as foo;
+-- with nn_table(id, w_xh, w_ho) as (
+--     select 0,
+--     (select array_agg(array_agg) from generate_series(1,4), (select array_agg(random()) from generate_series(1,20)) as foo),
+--     (select array_agg(array_agg) from generate_series(1,20), (select array_agg(random()) from generate_series(1,3)) as foo)
+-- ) select * from nn_table;
+
+create aggregate avg(double precision[])
+(
+    sfunc = mat_avg,
+    stype = float8[],
+    finalfunc = mat_avg_final,
+    initcond = '{0.0, 0}'
+);
+
+drop table if exists nn_table;
+drop table if exists iris;
+drop table if exists iris3;
+
+create table if not exists iris (sepal_length float,sepal_width float,petal_length float,petal_width float,species int);
+create table if not exists iris3 (img float[], one_hot float[]);
+
+\copy iris from '/home/clemens/masterarbeit/psql-autodiff/src/ext/iris.csv' DELIMITER ',' CSV HEADER
+insert into iris3 (select array[[sepal_length/10,sepal_width/10,petal_length/10,petal_width/10]] as img, 
+                    array[(array_fill(0::float,array[species]) || 1::float ) || array_fill(0::float,array[2-species])] as one_hot from iris limit 150);
+
+create table nn_table(id int not null, w_xh float array not null, w_ho float array not null);
+insert into nn_table select 0,
+    (select array_agg(array_agg) from generate_series(1,4), (select array_agg(random()) from generate_series(1,20)) as foo),
+    (select array_agg(array_agg) from generate_series(1,20), (select array_agg(random()) from generate_series(1,3)) as foo);
+
+-- with gd(id, w_xh, w_ho) as (
+--     select id+1 as id, w_xh - 0.2 * (transpose(img)**d_xh) as w_xh, w_ho - 0.2 * (transpose(a_xh)**d_ho) as w_ho
+--         from (
+--             select l_xh *(1 - (a_xh * a_xh)) as d_xh, *
+--             from (
+--                 select d_ho**transpose(w_ho) as l_xh, *
+--                 from (
+--                     select l_ho * (1 - (a_ho * a_ho)) as d_ho, *
+--                     from (
+--                         select 2*(a_ho-one_hot) as l_ho, *
+--                         from (
+--                             select tanh_m(a_xh**w_ho) as a_ho, *
+--                             from (
+--                                 select tanh_m(img**w_xh) as a_xh, *
+--                                 from (select * from iris3 tablesample bernoulli (1)) as foo7, nn_table) as foo6
+--                         ) as foo5
+--                     ) as foo4
+--                 ) as foo3
+--             ) as foo2
+--         ) as foo1
+-- ), test as (select id, correct, count(*) as count from (select id, index_max(softmax(tanh_m(img**w_xh)**w_ho))=index_max(one_hot) as correct from iris3, gd) as foo group by id, correct)
+-- select id, count*1.0/(select sum(count) from test t2 where t1.id=t2.id) from test t1 where correct=true order by id;
+
+with gd(id, w_xh, w_ho) as (
+    select id+1 as id, w_xh - 0.2 * (d_w_xh) as w_xh, w_ho - 0.2 * (d_w_ho) as w_ho
+    from autodiff_l1_2((select * from iris3 tablesample bernoulli (1), nn_table), (lambda(x)(softmax_cce(tanh_m(x.img**x.w_xh)**x.w_ho, x.one_hot))))
+), test as (select id, correct, count(*) as count from (select id, index_max(softmax(tanh_m(img**w_xh)**w_ho))=index_max(one_hot) as correct from iris3, gd) as foo group by id, correct)
+select id, count*1.0/(select sum(count) from test t2 where t1.id=t2.id) from test t1 where correct=true order by id; 
+
+set jit='on';
+with gd(id, w_xh, w_ho) as (
+    select id+1 as id, w_xh - 0.2 * (d_w_xh) as w_xh, w_ho - 0.2 * (d_w_ho) as w_ho
+    from autodiff_l1_2((select * from iris3 tablesample bernoulli (1), nn_table), (lambda(x)(softmax_cce(tanh_m(x.img**x.w_xh)**x.w_ho, x.one_hot))))
+), test as (select id, correct, count(*) as count from (select id, index_max(softmax(tanh_m(img**w_xh)**w_ho))=index_max(one_hot) as correct from iris3, gd) as foo group by id, correct)
+select id, count*1.0/(select sum(count) from test t2 where t1.id=t2.id) from test t1 where correct=true order by id;
+
+with gd(id, w_xh, w_ho) as (
+    select id+1 as id, w_xh - 0.2 * (d_w_xh) as w_xh, w_ho - 0.2 * (d_w_ho) as w_ho
+    from autodiff_l3((select * from iris3 tablesample bernoulli (1), nn_table), (lambda(x)(softmax_cce(tanh_m(x.img**x.w_xh)**x.w_ho, x.one_hot))))
+), test as (select id, correct, count(*) as count from (select id, index_max(softmax(tanh_m(img**w_xh)**w_ho))=index_max(one_hot) as correct from iris3, gd) as foo group by id, correct)
+select id, count*1.0/(select sum(count) from test t2 where t1.id=t2.id) from test t1 where correct=true order by id;
+
+\echo "hello"
+
+
+-- select avg(img) as img_avg, avg(one_hot) as one_hot_avg from iris3 limit 5;
+
+
+-- select id+1 as id, w_xh - 0.2 * avg(transpose(img)**d_xh) as w_xh, w_ho as w_ho
+-- from (
+--     select w_ho - 0.2 * avg(transpose(a_xh)**d_ho) as w_ho, id, w_xh, img, d_xh
+--     from (
+--         select l_xh *(1 - (a_xh * a_xh)) as d_xh, *
+--         from (
+--             select d_ho**transpose(w_ho) as l_xh, *
+--             from (
+--                 select l_ho * (1 - (a_ho * a_ho)) as d_ho, *
+--                 from (
+--                     select 2*(a_ho-one_hot) as l_ho, *
+--                     from (
+--                         select tanh_m(a_xh**w_ho) as a_ho, *
+--                         from (
+--                             select tanh_m(img**w_xh) as a_xh, *
+--                             from (select * from iris3 limit 10) as foo7, nn_table) as foo6
+--                     ) as foo5
+--                 ) as foo4
+--             ) as foo3
+--         ) as foo2
+--     ) as foo1 group by id, w_xh, w_ho, img, d_xh
+-- ) as foo0
+-- group by id, w_xh, w_ho;
+
+-- select distinct array_dims(tanh_m(img**w_xh)) as a_xh
+--                         from (select * from iris3 limit 10) as foo7, nn_table;
+
+-- select distinct array_dims(tanh_m(a_xh**w_ho)) as a_ho
+--                     from (
+--                         select tanh_m(img**w_xh) as a_xh, *
+--                         from (select * from iris3 limit 10) as foo7, nn_table) as foo6;
+
+-- select distinct array_dims(2*(a_ho-one_hot)) as l_ho
+--                 from (
+--                     select tanh_m(a_xh**w_ho) as a_ho, *
+--                     from (
+--                         select tanh_m(img**w_xh) as a_xh, *
+--                         from (select * from iris3 limit 10) as foo7, nn_table) as foo6
+--                 ) as foo5;
+
+-- select distinct array_dims(l_ho * (1 - (a_ho * a_ho))) as d_ho
+--             from (
+--                 select 2*(a_ho-one_hot) as l_ho, *
+--                 from (
+--                     select tanh_m(a_xh**w_ho) as a_ho, *
+--                     from (
+--                         select tanh_m(img**w_xh) as a_xh, *
+--                         from (select * from iris3 limit 10) as foo7, nn_table) as foo6
+--                 ) as foo5
+--             ) as foo4;
+
+-- select distinct array_dims(d_ho**transpose(w_ho)) as l_xh
+--         from (
+--             select l_ho * (1 - (a_ho * a_ho)) as d_ho, *
+--             from (
+--                 select 2*(a_ho-one_hot) as l_ho, *
+--                 from (
+--                     select tanh_m(a_xh**w_ho) as a_ho, *
+--                     from (
+--                         select tanh_m(img**w_xh) as a_xh, *
+--                         from (select * from iris3 limit 10) as foo7, nn_table) as foo6
+--                 ) as foo5
+--             ) as foo4
+--         ) as foo3;
+
+-- select distinct array_dims(l_xh *(1 - (a_xh * a_xh))) as d_xh
+--     from (
+--         select d_ho**transpose(w_ho) as l_xh, *
+--         from (
+--             select l_ho * (1 - (a_ho * a_ho)) as d_ho, *
+--             from (
+--                 select 2*(a_ho-one_hot) as l_ho, *
+--                 from (
+--                     select tanh_m(a_xh**w_ho) as a_ho, *
+--                     from (
+--                         select tanh_m(img**w_xh) as a_xh, *
+--                         from (select * from iris3 limit 10) as foo7, nn_table) as foo6
+--                 ) as foo5
+--             ) as foo4
+--         ) as foo3
+--     ) as foo2;

@@ -190,9 +190,9 @@ Datum autodiff_l1_2_internal(PG_FUNCTION_ARGS)
 
         /* reset derivatives to avoid undefined behaviour */
         for(int i = 0; i < inDesc->natts; i++) {
-            if (castNode(ExprState, lambda->exprstate)->lambdaContainsMatrix) {
-                int dims[2] = {1, 1};
-                derivatives[i] = createArray(dims, 0, false);
+            if (castNode(ExprState, lambda->exprstate)->lambdaContainsMatrix)
+            {
+                derivatives[i] = createScalar(0.0);
             } else {
                 derivatives[i] = Float8GetDatum(0.0);
             }
@@ -449,8 +449,7 @@ Datum autodiff_l3_internal(PG_FUNCTION_ARGS, Datum (*derivefunc)(Datum **arg, Da
         {
             if (castNode(ExprState, lambda->exprstate)->lambdaContainsMatrix)
             {
-                int dims[2] = {1, 1};
-                derivatives[i] = createArray(dims, 0, false);
+                derivatives[i] = createScalar(0.0);
             }
             else
             {
@@ -586,8 +585,7 @@ Datum autodiff_l4_internal(PG_FUNCTION_ARGS)
         {
             if (castNode(ExprState, lambda->exprstate)->lambdaContainsMatrix)
             {
-                int dims[2] = {1, 1};
-                derivatives[i] = createArray(dims, 0, false);
+                derivatives[i] = createScalar(0.0);
             }
             else
             {
@@ -625,132 +623,6 @@ Datum autodiff_l4_internal(PG_FUNCTION_ARGS)
 
     return (Datum)0;
 }
-
-/*Datum autodiff_debug_internal(PG_FUNCTION_ARGS)
-{
-    MemoryContext oldcontext;
-    FuncCallContext *funcctx;
-    MemoryContext per_query_ctx;
-    TupleDesc outDesc = NULL;
-    Datum *replVal;
-    Datum *oldVal;
-    bool *replIsNull;
-    bool *oldIsNull;
-
-    ReturnSetInfo *rsinfo = (ReturnSetInfo *)fcinfo->resultinfo;
-    LLVMJitContext *jitContext = (LLVMJitContext *)(rsinfo->econtext->ecxt_estate->es_jit);
-
-    if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
-        ereport(ERROR,
-                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                 errmsg("set-valued function called in context that cannot accept a set")));
-    if (!(rsinfo->allowedModes & SFRM_Materialize))
-        ereport(ERROR,
-                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                 errmsg("materialize mode required, but it is not "
-                        "allowed in this context")));
-
-    LambdaExpr *lambda = PG_GETARG_LAMBDA(1);
-    TupleDesc inDesc = (TupleDesc)list_nth(lambda->argtypes, 0);
-
-    per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
-    oldcontext = MemoryContextSwitchTo(per_query_ctx);
-
-    PlanState *planState = (PlanState *)PG_GETARG_POINTER(0);
-    TupleTableSlot *slot = MakeTupleTableSlot(NULL);
-    Tuplestorestate *tsOut = tuplestore_begin_heap(true, false, work_mem);
-
-    HeapTuple tuple;
-
-    outDesc = CreateTupleDescCopy(inDesc);
-    oldIsNull = (bool *)palloc(inDesc->natts * sizeof(bool));
-    oldVal = (Datum *)palloc(outDesc->natts * sizeof(Datum));
-
-    outDesc = CreateTemplateTupleDesc(inDesc->natts * 2 + 1, false);
-
-    { // register each tuple-descriptor field with the corresponding field name
-        for (int i = 0; i < inDesc->natts; i++)
-        {
-            TupleDescCopyEntry(outDesc, (AttrNumber)(i + 1), inDesc, (AttrNumber)(i + 1));
-        }
-
-        TupleDescInitEntry(outDesc, (AttrNumber)(inDesc->natts + 1), "Result",
-                           lambda->rettype, lambda->rettypmod, 0);
-
-        for (int i = 0; i < inDesc->natts; i++)
-        {
-            char buffer[64];
-            char *column_name = inDesc->attrs[i].attname.data;
-            sprintf(buffer, "d_%s", column_name);
-
-            TupleDescInitEntry(outDesc, (AttrNumber)(inDesc->natts + 2 + i), buffer,
-                               lambda->rettype, lambda->rettypmod, 0);
-        }
-    }
-
-    replIsNull = (bool *)palloc((inDesc->natts * 2 + 1) * sizeof(bool));
-    replVal = (Datum *)palloc((inDesc->natts * 2 + 1) * sizeof(Datum));
-
-    Datum derivatives[inDesc->natts];
-
-    for (slot = ExecProcNode(planState); !TupIsNull(slot); slot = ExecProcNode(planState))
-    {
-        bool isnull;
-        Datum *val_ptr = oldVal;
-        bool *null_ptr = oldIsNull;
-
-        HeapTuple t;
-        HeapTupleHeader hdr;
-
-        if (slot->tts_mintuple)
-        {
-            hdr = slot->tts_tuple->t_data;
-            heap_deform_tuple(slot->tts_tuple, inDesc, val_ptr, null_ptr);
-        }
-        else
-        {
-            slot_getallattrs(slot);
-            t = heap_form_tuple(inDesc, slot->tts_values, slot->tts_isnull);
-            val_ptr = slot->tts_values;
-            null_ptr = slot->tts_isnull;
-            hdr = t->t_data;
-        }
-
-        // reset derivatives to avoid undefined behaviour 
-        for (int i = 0; i < inDesc->natts; i++)
-        {
-            derivatives[i] = Float8GetDatum(0.0);
-        }
-        PG_LAMBDA_SETARG(lambda, 0, HeapTupleHeaderGetDatum(hdr));
-        Datum result = PG_LAMBDA_DERIVE(lambda, &isnull, derivatives);
-
-        for (int i = 0; i < inDesc->natts; i++)
-        {
-            replVal[i] = val_ptr[i];
-            replIsNull[i] = null_ptr[i];
-        }
-
-        replVal[inDesc->natts] = result;
-        replIsNull[inDesc->natts] = false;
-
-        for (int i = 0; i < inDesc->natts; i++)
-        {
-            replVal[inDesc->natts + 1 + i] = derivatives[i];
-            replIsNull[inDesc->natts + 1 + i] = false;
-        }
-        tuple = heap_form_tuple(outDesc, replVal, replIsNull);
-
-        tuplestore_puttuple(tsOut, tuple);
-    }
-
-    rsinfo->returnMode = SFRM_Materialize;
-    rsinfo->setResult = tsOut;
-    rsinfo->setDesc = outDesc;
-
-    MemoryContextSwitchTo(oldcontext);
-
-    return (Datum)0;
-}*/
 
 Datum autodiff_l1_2(PG_FUNCTION_ARGS)
 {

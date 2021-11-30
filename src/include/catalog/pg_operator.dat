@@ -3337,4 +3337,29 @@
   oprname => '#-', oprleft => 'jsonb', oprright => '_text',
   oprresult => 'jsonb', oprcode => 'jsonb_delete_path' },
 
+# OIDs of matrix arithmetic operators(see pg_proc.dat)
+{ oid => '9011', descr => 'subtract matrix from matrix',
+  oprname => '-', oprleft => '_float8', oprright => '_float8',
+  oprresult => '_float8', oprcode => 'mat_sub_mm' },
+
+{ oid => '9013', descr => 'subtract scalar from matrix',
+  oprname => '-', oprleft => '_float8', oprright => 'float8',
+  oprresult => '_float8', oprcode => 'mat_sub_ms' },
+
+{ oid => '9015', descr => 'subtract matrix from scalar',
+  oprname => '-', oprleft => 'float8', oprright => '_float8',
+  oprresult => '_float8', oprcode => 'mat_sub_sm' },
+
+{ oid => '9017', descr => 'multiply scalar with matrix',
+  oprname => '*', oprleft => 'float8', oprright => '_float8',
+  oprresult => '_float8', oprcode => 'mat_mul_sm' },
+
+{ oid => '9021', descr => 'dot product of matrix and matrix',
+  oprname => '**', oprleft => '_float8', oprright => '_float8',
+  oprresult => '_float8', oprcode => 'mat_mul' },
+
+{ oid => '9023', descr => 'elem-wise product of matrix and matrix',
+  oprname => '*', oprleft => '_float8', oprright => '_float8',
+  oprresult => '_float8', oprcode => 'mat_mul_elem' },
+
 ]

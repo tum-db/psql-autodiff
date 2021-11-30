@@ -3762,6 +3762,15 @@ raw_expression_tree_walker(Node *node,
 			break;
 		case T_CommonTableExpr:
 			return walker(((CommonTableExpr *) node)->ctequery, context);
+		case T_LambdaExpr:
+			{
+				LambdaExpr *le = (LambdaExpr *) node;
+
+				if(walker(le->expr, context))
+					return true;
+				break;
+				//return false;
+			}
 		default:
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(node));

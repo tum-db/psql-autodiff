@@ -258,7 +258,7 @@ void ExecCheckLambdaForMatrix(ExprState *expression)
 {
 	expression->lambdaContainsMatrix = false;
 	for(int i = 0; i < expression->steps_len; i++) {
-		if (ExecEvalStepOp(expression, &(expression->steps[i])) == 59 && expression->steps[i].d.fieldselect.resulttype == 1022)
+		if ((ExecEvalStepOp(expression, &(expression->steps[i])) == 59) && expression->steps[i].d.fieldselect.resulttype == 1022)
 		{
 			expression->lambdaContainsMatrix = true;
 			return;
@@ -321,13 +321,19 @@ Datum ExecDeriveLambdaExpr(ExprState *expression, ExprContext *econtext, bool *i
 	Datum seed;
 	int dims[2] = {1, 1};
 	if (expression->lambdaContainsMatrix) {
-		// seed = createArray(dims, 1.0, false);
-		seed = createSeedArray(result);
+		if ((ExecEvalStepOp(expression, &(expression->steps[expression->steps_len - 2])) == 17 ||
+			 ExecEvalStepOp(expression, &(expression->steps[expression->steps_len - 2])) == 18) &&
+			expression->steps[expression->steps_len - 2].d.func.finfo->fn_oid == 7801) // This checks, if expressionsstep is func-call and calls softmax as last call
+		{
+			seed = createScalar(1.0);
+		}
+		else
+		{
+			seed = createSeedArray(result);
+		}
 	} else {
 		seed = Float8GetDatum(1.0);
 	}
-
-	printf("begin of derivation\n");
 
 	//reverse through steps to derive each var
 	ExecLambdaDeriveSubtree(expression, expression->steps_len - 2, seed, derivatives);
@@ -589,8 +595,8 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 		}
 		case 7801: /* float softmax_ce */
 		{
-			Datum x = state->steps[fetchIndex].d.func.fcinfo_data->arg[0];
-			Datum y = state->steps[fetchIndex].d.func.fcinfo_data->arg[1];
+			Datum x = state->steps[fetchIndex].d.func.fcinfo_data->arg[0]; //nn-output vector
+			Datum y = state->steps[fetchIndex].d.func.fcinfo_data->arg[1]; //labels-vector(needs no derivation)
 
 			Datum newSeedX = matrix_mul_internal(seed, softmax_cce_derive(x, y), false, false); // TODO: Multiply seed by softmax_derive(mat_mul_internal(seed, softmax(...)))
 
