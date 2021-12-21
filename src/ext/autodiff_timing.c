@@ -51,11 +51,11 @@ extern TupleDesc autodiff_t_record_type(List *args)
 }
 
 PG_MODULE_MAGIC;
-PG_FUNCTION_INFO_V1_RECTYPE(autodiff_t_l1_2, autodiff_t_record_type);
+PG_FUNCTION_INFO_V1_RECTYPE(autodiff_t_l2, autodiff_t_record_type);
 PG_FUNCTION_INFO_V1_RECTYPE(autodiff_t_l3, autodiff_t_record_type);
 PG_FUNCTION_INFO_V1_RECTYPE(autodiff_t_l4, autodiff_t_record_type);
 
-Datum autodiff_t_l1_2_internal(PG_FUNCTION_ARGS)
+Datum autodiff_t_l2_internal(PG_FUNCTION_ARGS, clock_t diff)
 {
     MemoryContext oldcontext;
     FuncCallContext *funcctx;
@@ -121,6 +121,9 @@ Datum autodiff_t_l1_2_internal(PG_FUNCTION_ARGS)
     replVal = (Datum *)palloc((inDesc->natts * 2 + 1) * sizeof(Datum));
 
     Datum derivatives[inDesc->natts];
+    int counter = 0;
+    float8 time_compilation = 0.0, time_execution = 0.0;
+    clock_t execution_tally = 0;
 
     for (slot = ExecProcNode(planState); !TupIsNull(slot); slot = ExecProcNode(planState))
     {
@@ -148,17 +151,35 @@ Datum autodiff_t_l1_2_internal(PG_FUNCTION_ARGS)
         /* reset derivatives to avoid undefined behaviour */
         for (int i = 0; i < inDesc->natts; i++)
         {
-            derivatives[i] = Float8GetDatum(0.0);
+            if (castNode(ExprState, lambda->exprstate)->lambdaContainsMatrix)
+            {
+                derivatives[i] = createScalar(0.0);
+            }
+            else
+            {
+                derivatives[i] = Float8GetDatum(0.0);
+            }
         }
+
+        clock_t begin = clock();
+
         PG_LAMBDA_SETARG(lambda, 0, HeapTupleHeaderGetDatum(hdr));
         Datum result = PG_LAMBDA_DERIVE(lambda, &isnull, derivatives);
+
+        clock_t end = clock();
+
+        clock_t diff_internal = end - begin;
+
+        if (counter++ == 0) {
+            time_compilation = ((float8)(diff_internal + diff)) / CLOCKS_PER_SEC;
+            printf("the time taken for compilation was: %lf\n", time_compilation);
+        }
 
         for (int i = 0; i < inDesc->natts; i++)
         {
             replVal[i] = val_ptr[i];
             replIsNull[i] = null_ptr[i];
         }
-
         replVal[inDesc->natts] = result;
         replIsNull[inDesc->natts] = false;
 
@@ -167,10 +188,17 @@ Datum autodiff_t_l1_2_internal(PG_FUNCTION_ARGS)
             replVal[inDesc->natts + 1 + i] = derivatives[i];
             replIsNull[inDesc->natts + 1 + i] = false;
         }
-        tuple = heap_form_tuple(outDesc, replVal, replIsNull);
 
+        tuple = heap_form_tuple(outDesc, replVal, replIsNull);
         tuplestore_puttuple(tsOut, tuple);
+        //counter++;
     }
+
+    // time_execution = ((float8)execution_tally) / CLOCKS_PER_SEC;
+    // printf("all ticks combined for eval were: %ld\n", execution_tally);
+    // //time_execution /= (float8) counter - 1;
+    // printf("the time taken for execution was: %lf\n", time_execution);
+    // printf("the number of runs: %d\n", counter);
 
     rsinfo->returnMode = SFRM_Materialize;
     rsinfo->setResult = tsOut;
@@ -439,8 +467,27 @@ Datum autodiff_t_l4_internal(PG_FUNCTION_ARGS)
     return (Datum)0;
 }
 
-Datum autodiff_t_l1_2(PG_FUNCTION_ARGS)
+Datum autodiff_t_l2(PG_FUNCTION_ARGS)
 {
+    // ReturnSetInfo *rsinfo = (ReturnSetInfo *)fcinfo->resultinfo;
+    // LambdaExpr *lambda = PG_GETARG_LAMBDA(1);
+
+    // clock_t t = clock();
+
+    // llvm_enter_tmp_context(rsinfo->econtext->ecxt_estate);
+    // ExecInitLambdaExpr((Node *)lambda, false, true);
+    // llvm_leave_tmp_context(rsinfo->econtext->ecxt_estate);
+
+    // t = clock() - t;
+    // double time_taken_compile = ((double)t) / CLOCKS_PER_SEC;
+    // printf("Time taken for compilation of L1|L2: %f s", time_taken_compile);
+    // t = clock();
+
+    // Datum result = autodiff_t_l2_internal(fcinfo);
+    // t = clock() - t;
+    // double time_taken_execute = ((double)t) / CLOCKS_PER_SEC;
+    // printf("Time taken for execution of L1|L2: %f s", time_taken_execute);
+    // return result;
     ReturnSetInfo *rsinfo = (ReturnSetInfo *)fcinfo->resultinfo;
     LambdaExpr *lambda = PG_GETARG_LAMBDA(1);
 
@@ -450,15 +497,11 @@ Datum autodiff_t_l1_2(PG_FUNCTION_ARGS)
     ExecInitLambdaExpr((Node *)lambda, false, true);
     llvm_leave_tmp_context(rsinfo->econtext->ecxt_estate);
 
-    t = clock() - t;
-    double time_taken_compile = ((double)t) / CLOCKS_PER_SEC;
-    printf("Time taken for compilation of L1|L2: %f s", time_taken_compile);
-    t = clock();
-
-    Datum result = autodiff_t_l1_2_internal(fcinfo);
-    t = clock() - t;
-    double time_taken_execute = ((double)t) / CLOCKS_PER_SEC;
-    printf("Time taken for execution of L1|L2: %f s", time_taken_execute);
+    clock_t diff = clock() - t;
+    Datum result = autodiff_t_l2_internal(fcinfo, diff);
+    clock_t complete = clock() - t;
+    double time_taken_execute = ((double)complete) / CLOCKS_PER_SEC;
+    printf("Time taken for execution of L2: %lf s", time_taken_execute);
     return result;
 }
 

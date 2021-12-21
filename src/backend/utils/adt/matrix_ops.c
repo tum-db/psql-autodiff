@@ -636,6 +636,50 @@ Datum mat_avg_final(PG_FUNCTION_ARGS)
 }
 
 /*
+ * Apply a single gradient update to a matrix(updates inplace)
+ * params: weights -> matrix to be updated
+ *         derivatives -> gradient of weights
+ *         lr -> learn_rate modifier to gradient update
+ *         batch_size -> amount of derivatives, that went int derivatives
+ */
+Datum mat_apply_gradient(Datum weights, Datum derivatives, float8 learning_rate, int batch_size){
+    ArrayType *weights_a, *derivatives_a;
+    weights_a = DatumGetArrayTypeP(weights);
+    derivatives_a = DatumGetArrayTypeP(derivatives);
+
+    if(isScalar(weights_a)) {
+        weights_a = copyArray(derivatives);
+        Datum *data = ARR_DATA_PTR(weights_a);
+        for(int i = 0; i < ArrayGetNItems(ARR_NDIM(weights_a), ARR_DIMS(weights_a)); i++) {
+            data[i] = Float8GetDatum((DatumGetFloat8(data[i]) * learning_rate) / batch_size);
+        }
+        PG_RETURN_ARRAYTYPE_P(weights_a);
+    }
+    if(isScalar(derivatives_a)) {
+        ereport(ERROR, (errmsg("mat_apply_gradient: The to-be-applied gradient cannot be a scalar!")));
+    }
+
+    int ndims = ARR_NDIM(weights_a);
+    int *dims = ARR_DIMS(weights_a);
+    if(ndims != ARR_NDIM(derivatives_a)) {
+        ereport(ERROR, (errmsg("mat_apply_gradient: derivatives and weight matrix do not match!")));
+    }
+    for(int i = 0; i < ndims; i++) {
+        if(dims[i] != ARR_DIMS(derivatives_a)) {
+            ereport(ERROR, (errmsg("mat_apply_gradient: Dimensions do not match in derivatives and weights!")));
+        }
+    }
+
+    Datum *data = ARR_DATA_PTR(weights_a);
+    Datum *derivatives_data = ARR_DATA_PTR(derivatives_a);
+
+    for(int i = 0; i < ArrayGetNItems(ndims, dims); i++) {
+        data[i] = Float8GetDatum(DatumGetFloat8(data[i]) - ((learning_rate * DatumGetFloat8(derivatives_data[i]))/batch_size));
+    }
+    PG_RETURN_ARRAYTYPE_P(weights_a);
+}
+
+/*
  * Return index of largest value
  */
 Datum index_max(PG_FUNCTION_ARGS) {

@@ -18,7 +18,7 @@
 #include <pthread.h>
 #include "miscadmin.h"
 
-extern TupleDesc gradient_descent_record_type(List *args)
+extern TupleDesc gradient_descent_m_record_type(List *args)
 {
     LambdaExpr *lambda = (LambdaExpr *)list_nth(args, 1);
     TupleDesc inDesc = (TupleDesc)list_nth(lambda->argtypes, 0);
@@ -35,11 +35,11 @@ extern TupleDesc gradient_descent_record_type(List *args)
 }
 
 PG_MODULE_MAGIC;
-PG_FUNCTION_INFO_V1_RECTYPE(gradient_descent_l1_2, gradient_descent_record_type);
-PG_FUNCTION_INFO_V1_RECTYPE(gradient_descent_l3, gradient_descent_record_type);
-PG_FUNCTION_INFO_V1_RECTYPE(gradient_descent_l4, gradient_descent_record_type);
+PG_FUNCTION_INFO_V1_RECTYPE(gradient_descent_m_l1_2, gradient_descent_m_record_type);
+PG_FUNCTION_INFO_V1_RECTYPE(gradient_descent_m_l3, gradient_descent_m_record_type);
+PG_FUNCTION_INFO_V1_RECTYPE(gradient_descent_m_l4, gradient_descent_m_record_type);
 
-Datum gradient_descent_internal_l1_2(PG_FUNCTION_ARGS)
+Datum gradient_descent_m_internal_l1_2(PG_FUNCTION_ARGS)
 {
     MemoryContext oldcontext;
     FuncCallContext *funcctx;
@@ -81,7 +81,8 @@ Datum gradient_descent_internal_l1_2(PG_FUNCTION_ARGS)
     int tupleStoreCount = tuplestore_tuple_count(ttsIn);
     tuplestore_rescan(ttsIn);
 
-    if (batch_size < 1 || batch_size > tupleStoreCount) {
+    if (batch_size < 1 || batch_size > tupleStoreCount)
+    {
         batch_size = tupleStoreCount;
     }
 
@@ -104,26 +105,28 @@ Datum gradient_descent_internal_l1_2(PG_FUNCTION_ARGS)
 
     Datum derivatives[inDesc->natts];                                          /* Returned derivatives from autodiff */
     Datum coefficients_per_iteration[num_atts];                                /* coefficients of lambda_expr */
-    float8 *derivatives_tally = (float8 *)palloc((num_atts) * sizeof(float8)); // all derivatives for a single iterations tallied up
+    Datum *derivatives_tally = (Datum *)palloc((num_atts) * sizeof(Datum));    // all derivatives for a single iterations tallied up(indricetion through ArrayType pointers)
 
     for (int i = 0; i < num_atts; i++)
     {
-        coefficients_per_iteration[i] = Float8GetDatum(1.0);
-        derivatives_tally[i] = 0.0;
+        coefficients_per_iteration[i] = createScalar(0.0);
+        derivatives_tally[i] = createScalar(0.0);
     }
+    bool firstRun = true;
 
     for (int i = 0; i < iterations; i++)
     {
-        int tuple_counter = 0; //number of already calculated samples in batch
+        int tuple_counter = 0; // number of already calculated samples in batch
         while (tuplestore_gettupleslot(ttsIn, true, false, slot))
         {
-            if (batch_size <= tuple_counter) {
+            if (batch_size <= tuple_counter)
+            {
                 /* Calculate avg of tally and adjust coefficients */
                 for (int it = 0; it < num_atts; it++)
                 {
-                    float8 tally = (learning_rate * derivatives_tally[it]) / batch_size;
-                    coefficients_per_iteration[it] = Float8GetDatum(DatumGetFloat8(coefficients_per_iteration[it]) - tally);
-                    derivatives_tally[it] = 0.0;
+                    //updates inplace, but if scalar coefficients, returns new array
+                    coefficients_per_iteration[it] = mat_apply_gradient(coefficients_per_iteration[it], derivatives_tally[it], learning_rate, batch_size);
+                    derivatives_tally[it] = createScalar(0.0);
                 }
                 tuple_counter = 0;
             }
@@ -132,19 +135,63 @@ Datum gradient_descent_internal_l1_2(PG_FUNCTION_ARGS)
             hdr = slot->tts_tuple->t_data;
             bool isnull;
             heap_deform_tuple(slot->tts_tuple, inDesc, oldVal, oldIsNull);
+            if (unlikely(firstRun)) // will only be executed once, so unlikely should improve perf
+            {
+                firstRun = false;
+                for (int it = 0; it < num_atts; it++)
+                {
+                    /* Set cooefficients/weights to input, so size does not have to be determined */
+                    coefficients_per_iteration[it] = matrix_add_inplace(coefficients_per_iteration[it], oldVal[it]);
+                }
+            }
 
             for (int it = 0; it < num_atts; it++)
             {
                 /* Set elements of tuple in slot to the correct cooefficients*/
-                oldVal[it] = coefficients_per_iteration[it];
+                Datum tmp = createScalar(0.0);
+                oldVal[it] = matrix_add_inplace(tmp, coefficients_per_iteration[it]);
             }
 
-            HeapTuple newTup = heap_form_tuple(inDesc, oldVal, oldIsNull); //only way to feed the coefficients into the HeapTupleHeader struct-format
+            HeapTuple newTup = heap_form_tuple(inDesc, oldVal, oldIsNull); // only way to feed the coefficients into the HeapTupleHeader struct-format
 
             for (int it = 0; it < inDesc->natts; it++)
             {
                 /* Reset derivatives to avoid undefined behaviour */
-                derivatives[it] = Float8GetDatum(0.0);
+                derivatives[it] = createScalar(0.0);
+            }
+
+            {
+                ExprState *state = castNode(ExprState, lambda->exprstate);
+                for (int s = 0; s < state->steps_len; s++)
+                {
+                    switch (ExecEvalStepOp(state, &(state->steps[s]))) {
+                        case 42:
+                        {
+                            printf("ParamExtern in step %d\n", s);
+                            break;
+                        }
+                        case 59:
+                        {
+                            printf("FieldSelect in step %d\n", s);
+                            break;
+                        }
+                        case 16:
+                        {
+                            printf("Const in step %d\n", s);
+                            break;
+                        }
+                        case 18:
+                        {
+                            printf("FuncExpr(OID: %d) in step %d\n", state->steps[s].d.func.finfo->fn_oid, s);
+                            break;
+                        }
+                        default:
+                        {
+                            printf("Opcode %d in step %d\n", (int)ExecEvalStepOp(state, &(state->steps[s])), s);
+                            break;
+                        }
+                    }
+                }
             }
 
             PG_LAMBDA_SETARG(lambda, 0, HeapTupleHeaderGetDatum(newTup->t_data));
@@ -153,18 +200,21 @@ Datum gradient_descent_internal_l1_2(PG_FUNCTION_ARGS)
             for (int it = 0; it < num_atts; it++)
             {
                 // tally up all elements per column
-                derivatives_tally[it] += DatumGetFloat8(derivatives[it]);
+                derivatives_tally[it] = matrix_add_inplace(derivatives_tally[it], derivatives[it]);
+                if(isScalar(DatumGetArrayTypeP(derivatives[it]))) {
+                    printf("\nderivative %d is a scalar!\n\n", it);
+                }
             }
             tuple_counter++;
         }
         tuplestore_rescan(ttsIn);
+        printf("\niteration: %d\n\n", i);
 
         /* Calculate avg of tally and adjust coefficients */
         for (int it = 0; it < num_atts; it++)
         {
-            float8 tally = (learning_rate * derivatives_tally[it]) / batch_size;
-            coefficients_per_iteration[it] = Float8GetDatum(DatumGetFloat8(coefficients_per_iteration[it]) - tally);
-            derivatives_tally[it] = 0.0;
+            coefficients_per_iteration[it] = mat_apply_gradient(coefficients_per_iteration[it], derivatives_tally[it], learning_rate, batch_size);
+            derivatives_tally[it] = createScalar(0.0);
         }
     }
 
@@ -186,7 +236,7 @@ Datum gradient_descent_internal_l1_2(PG_FUNCTION_ARGS)
     return (Datum)0;
 }
 
-Datum gradient_descent_internal_l3(PG_FUNCTION_ARGS, Datum (*derivefunc)(Datum **arg, Datum *derivatives))
+Datum gradient_descent_m_internal_l3(PG_FUNCTION_ARGS, Datum (*derivefunc)(Datum **arg, Datum *derivatives))
 {
     MemoryContext oldcontext;
     FuncCallContext *funcctx;
@@ -250,15 +300,16 @@ Datum gradient_descent_internal_l3(PG_FUNCTION_ARGS, Datum (*derivefunc)(Datum *
     replIsNull = (bool *)palloc((num_atts) * sizeof(bool));
     replVal = (Datum *)palloc((num_atts) * sizeof(Datum));
 
-    Datum derivatives[inDesc->natts];                                                 /* Returned derivatives from autodiff */
-    Datum coefficients_per_iteration[num_atts];                                   /* coefficients of lambda_expr */
-    float8 *derivatives_tally = (float8 *) palloc((num_atts) * sizeof(float8));   // all derivatives for a single iterations tallied up
+    Datum derivatives[inDesc->natts];                                       /* Returned derivatives from autodiff */
+    Datum coefficients_per_iteration[num_atts];                             /* coefficients of lambda_expr */
+    Datum *derivatives_tally = (Datum *)palloc((num_atts) * sizeof(Datum)); // all derivatives for a single iterations tallied up(indricetion through ArrayType pointers)
 
     for (int i = 0; i < num_atts; i++)
     {
-        coefficients_per_iteration[i] = Float8GetDatum(1.0);
-        derivatives_tally[i] = 0.0;
+        coefficients_per_iteration[i] = createScalar(0.0);
+        derivatives_tally[i] = createScalar(0.0);
     }
+    bool firstRun = true;
 
     for (int i = 0; i < iterations; i++)
     {
@@ -270,22 +321,35 @@ Datum gradient_descent_internal_l3(PG_FUNCTION_ARGS, Datum (*derivefunc)(Datum *
                 /* Calculate avg of tally and adjust coefficients */
                 for (int it = 0; it < num_atts; it++)
                 {
-                    float8 tally = (learning_rate * derivatives_tally[it]) / batch_size;
-                    coefficients_per_iteration[it] = Float8GetDatum(DatumGetFloat8(coefficients_per_iteration[it]) - tally);
-                    derivatives_tally[it] = 0.0;
+                    // updates inplace, but if scalar coefficients, returns new array
+                    coefficients_per_iteration[it] = mat_apply_gradient(coefficients_per_iteration[it], derivatives_tally[it], learning_rate, batch_size);
+                    derivatives_tally[it] = createScalar(0.0);
                 }
                 tuple_counter = 0;
             }
-            heap_deform_tuple(slot->tts_tuple, inDesc, oldVal, oldIsNull);
 
-            for(int it = 0; it < num_atts; it++) {
-                /* Set elements of tuple in slot to the correct cooefficients*/
-                oldVal[it] = coefficients_per_iteration[it];
+            heap_deform_tuple(slot->tts_tuple, inDesc, oldVal, oldIsNull);
+            if (unlikely(firstRun)) // will only be executed once, so unlikely should improve perf
+            {
+                firstRun = false;
+                for (int it = 0; it < num_atts; it++)
+                {
+                    /* Set cooefficients/weights to input, so size does not have to be determined */
+                    coefficients_per_iteration[it] = matrix_add_inplace(coefficients_per_iteration[it], oldVal[it]);
+                }
             }
 
-            for(int it = 0; it < inDesc->natts; it++) {
+            for (int it = 0; it < num_atts; it++)
+            {
+                /* Set elements of tuple in slot to the correct cooefficients*/
+                Datum tmp = createScalar(0.0);
+                oldVal[it] = matrix_add_inplace(tmp, coefficients_per_iteration[it]);
+            }
+
+            for (int it = 0; it < inDesc->natts; it++)
+            {
                 /* Reset derivatives to avoid undefined behaviour */
-                derivatives[it] = Float8GetDatum(0.0);
+                derivatives[it] = createScalar(0.0);
             }
 
             Datum result = derivefunc(&oldVal, derivatives);
@@ -293,7 +357,7 @@ Datum gradient_descent_internal_l3(PG_FUNCTION_ARGS, Datum (*derivefunc)(Datum *
             for (int it = 0; it < num_atts; it++)
             {
                 // tally up all elements per column
-                derivatives_tally[it] += DatumGetFloat8(derivatives[it]);
+                derivatives_tally[it] = matrix_add_inplace(derivatives_tally[it], derivatives[it]);
             }
             tuple_counter++;
         }
@@ -302,9 +366,8 @@ Datum gradient_descent_internal_l3(PG_FUNCTION_ARGS, Datum (*derivefunc)(Datum *
         /* Calculate avg of tally and adjust coefficients */
         for (int it = 0; it < num_atts; it++)
         {
-            float8 tally = (learning_rate * derivatives_tally[it]) / batch_size;
-            coefficients_per_iteration[it] = Float8GetDatum(DatumGetFloat8(coefficients_per_iteration[it]) - tally);
-            derivatives_tally[it] = 0.0;
+            coefficients_per_iteration[it] = mat_apply_gradient(coefficients_per_iteration[it], derivatives_tally[it], learning_rate, batch_size);
+            derivatives_tally[it] = createScalar(0.0);
         }
     }
 
@@ -326,7 +389,7 @@ Datum gradient_descent_internal_l3(PG_FUNCTION_ARGS, Datum (*derivefunc)(Datum *
     return (Datum)0;
 }
 
-Datum gradient_descent_internal_l4(PG_FUNCTION_ARGS)
+Datum gradient_descent_m_internal_l4(PG_FUNCTION_ARGS)
 {
     MemoryContext oldcontext;
     FuncCallContext *funcctx;
@@ -390,15 +453,16 @@ Datum gradient_descent_internal_l4(PG_FUNCTION_ARGS)
     replIsNull = (bool *)palloc((num_atts) * sizeof(bool));
     replVal = (Datum *)palloc((num_atts) * sizeof(Datum));
 
-    Datum derivatives[inDesc->natts];                                              /* Returned derivatives from autodiff */
-    Datum coefficients_per_iteration[num_atts];                                /* coefficients of lambda_expr */
-    float8 *derivatives_tally = (float8 *)palloc((num_atts) * sizeof(float8)); // all derivatives for a single iterations tallied up
+    Datum derivatives[inDesc->natts];                                       /* Returned derivatives from autodiff */
+    Datum coefficients_per_iteration[num_atts];                             /* coefficients of lambda_expr */
+    Datum *derivatives_tally = (Datum *)palloc((num_atts) * sizeof(Datum)); // all derivatives for a single iterations tallied up(indricetion through ArrayType pointers)
 
     for (int i = 0; i < num_atts; i++)
     {
-        coefficients_per_iteration[i] = Float8GetDatum(1.0);
-        derivatives_tally[i] = 0.0;
+        coefficients_per_iteration[i] = createScalar(0.0);
+        derivatives_tally[i] = createScalar(0.0);
     }
+    bool firstRun = true;
 
     for (int i = 0; i < iterations; i++)
     {
@@ -410,24 +474,35 @@ Datum gradient_descent_internal_l4(PG_FUNCTION_ARGS)
                 /* Calculate avg of tally and adjust coefficients */
                 for (int it = 0; it < num_atts; it++)
                 {
-                    float8 tally = (learning_rate * derivatives_tally[it]) / batch_size;
-                    coefficients_per_iteration[it] = Float8GetDatum(DatumGetFloat8(coefficients_per_iteration[it]) - tally);
-                    derivatives_tally[it] = 0.0;
+                    // updates inplace, but if scalar coefficients, returns new array
+                    coefficients_per_iteration[it] = mat_apply_gradient(coefficients_per_iteration[it], derivatives_tally[it], learning_rate, batch_size);
+                    derivatives_tally[it] = createScalar(0.0);
                 }
                 tuple_counter = 0;
             }
+
             heap_deform_tuple(slot->tts_tuple, inDesc, oldVal, oldIsNull);
+            if (unlikely(firstRun)) // will only be executed once, so unlikely should improve perf
+            {
+                firstRun = false;
+                for (int it = 0; it < num_atts; it++)
+                {
+                    /* Set cooefficients/weights to input, so size does not have to be determined */
+                    coefficients_per_iteration[it] = matrix_add_inplace(coefficients_per_iteration[it], oldVal[it]);
+                }
+            }
 
             for (int it = 0; it < num_atts; it++)
             {
                 /* Set elements of tuple in slot to the correct cooefficients*/
-                oldVal[it] = coefficients_per_iteration[it];
+                Datum tmp = createScalar(0.0);
+                oldVal[it] = matrix_add_inplace(tmp, coefficients_per_iteration[it]);
             }
 
             for (int it = 0; it < inDesc->natts; it++)
             {
                 /* Reset derivatives to avoid undefined behaviour */
-                derivatives[it] = Float8GetDatum(0.0);
+                derivatives[it] = createScalar(0.0);
             }
 
             Datum result = PG_SIMPLE_LAMBDA_INJECT_DERIV(&oldVal, derivatives, 0);
@@ -435,7 +510,7 @@ Datum gradient_descent_internal_l4(PG_FUNCTION_ARGS)
             for (int it = 0; it < num_atts; it++)
             {
                 // tally up all elements per column
-                derivatives_tally[it] += DatumGetFloat8(derivatives[it]);
+                derivatives_tally[it] = matrix_add_inplace(derivatives_tally[it], derivatives[it]);
             }
             tuple_counter++;
         }
@@ -444,9 +519,8 @@ Datum gradient_descent_internal_l4(PG_FUNCTION_ARGS)
         /* Calculate avg of tally and adjust coefficients */
         for (int it = 0; it < num_atts; it++)
         {
-            float8 tally = (learning_rate * derivatives_tally[it]) / batch_size;
-            coefficients_per_iteration[it] = Float8GetDatum(DatumGetFloat8(coefficients_per_iteration[it]) - tally);
-            derivatives_tally[it] = 0.0;
+            coefficients_per_iteration[it] = mat_apply_gradient(coefficients_per_iteration[it], derivatives_tally[it], learning_rate, batch_size);
+            derivatives_tally[it] = createScalar(0.0);
         }
     }
 
@@ -468,7 +542,7 @@ Datum gradient_descent_internal_l4(PG_FUNCTION_ARGS)
     return (Datum)0;
 }
 
-Datum gradient_descent_l1_2(PG_FUNCTION_ARGS)
+Datum gradient_descent_m_l1_2(PG_FUNCTION_ARGS)
 {
     ReturnSetInfo *rsinfo = (ReturnSetInfo *)fcinfo->resultinfo;
     LambdaExpr *lambda = PG_GETARG_LAMBDA(1);
@@ -477,10 +551,10 @@ Datum gradient_descent_l1_2(PG_FUNCTION_ARGS)
     ExecInitLambdaExpr((Node *)lambda, false, true);
     llvm_leave_tmp_context(rsinfo->econtext->ecxt_estate);
 
-    return gradient_descent_internal_l1_2(fcinfo);
+    return gradient_descent_m_internal_l1_2(fcinfo);
 }
 
-Datum gradient_descent_l3(PG_FUNCTION_ARGS)
+Datum gradient_descent_m_l3(PG_FUNCTION_ARGS)
 {
     ReturnSetInfo *rsinfo = (ReturnSetInfo *)fcinfo->resultinfo;
     LambdaExpr *lambda = PG_GETARG_LAMBDA(1);
@@ -494,10 +568,10 @@ Datum gradient_descent_l3(PG_FUNCTION_ARGS)
 
     llvm_leave_tmp_context(rsinfo->econtext->ecxt_estate);
 
-    return gradient_descent_internal_l3(fcinfo, compiled_func);
+    return gradient_descent_m_internal_l3(fcinfo, compiled_func);
 }
 
-Datum gradient_descent_l4(PG_FUNCTION_ARGS)
+Datum gradient_descent_m_l4(PG_FUNCTION_ARGS)
 {
     ReturnSetInfo *rsinfo = (ReturnSetInfo *)fcinfo->resultinfo;
     LambdaExpr *lambda = PG_GETARG_LAMBDA(1);
@@ -507,7 +581,7 @@ Datum gradient_descent_l4(PG_FUNCTION_ARGS)
 
     ExecInitLambdaExpr((Node *)lambda, true, true);
     Datum (*compiled_func)(FunctionCallInfo);
-    compiled_func = llvm_prepare_lambda_tablefunc(jitContext, "ext/gradient_desc_ext.bc", "gradient_descent_internal_l4", 1);
+    compiled_func = llvm_prepare_lambda_tablefunc(jitContext, "ext/gradient_desc_m_ext.bc", "gradient_descent_m_internal_l4", 1);
 
     llvm_leave_tmp_context(rsinfo->econtext->ecxt_estate);
 

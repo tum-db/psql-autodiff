@@ -31,7 +31,7 @@ extern TupleDesc autodiff_record_type(List *args)
     }
 
     char attrNamesMapped[64];
-    strcpy(attrNamesMapped, "Result");
+    strcpy(attrNamesMapped, "result");
 
     TupleDescInitEntry(outDesc, (AttrNumber)(inDesc->natts + 1), attrNamesMapped,
                        lambda->rettype, lambda->rettypmod, 0);
@@ -146,7 +146,7 @@ Datum autodiff_l1_2_internal(PG_FUNCTION_ARGS)
             TupleDescCopyEntry(outDesc, (AttrNumber)(i + 1), inDesc, (AttrNumber)(i + 1));
         }
 
-        TupleDescInitEntry(outDesc, (AttrNumber)(inDesc->natts + 1), "Result",
+        TupleDescInitEntry(outDesc, (AttrNumber)(inDesc->natts + 1), "result",
                            lambda->rettype, lambda->rettypmod, 0);
 
         for (int i = 0; i < inDesc->natts; i++)
@@ -401,7 +401,7 @@ Datum autodiff_l3_internal(PG_FUNCTION_ARGS, Datum (*derivefunc)(Datum **arg, Da
         }
 
         char attrNamesMapped[64];
-        strcpy(attrNamesMapped, "Result");
+        strcpy(attrNamesMapped, "result");
 
         TupleDescInitEntry(outDesc, (AttrNumber)(inDesc->natts + 1), attrNamesMapped,
                            lambda->rettype, lambda->rettypmod, 0);
@@ -537,7 +537,7 @@ Datum autodiff_l4_internal(PG_FUNCTION_ARGS)
         }
 
         char attrNamesMapped[64];
-        strcpy(attrNamesMapped, "Result");
+        strcpy(attrNamesMapped, "result");
 
         TupleDescInitEntry(outDesc, (AttrNumber)(inDesc->natts + 1), attrNamesMapped,
                            lambda->rettype, lambda->rettypmod, 0);

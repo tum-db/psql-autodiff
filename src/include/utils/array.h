@@ -464,6 +464,7 @@ extern Datum mat_sub_mm(PG_FUNCTION_ARGS);
 extern Datum mat_sub_ms(PG_FUNCTION_ARGS);
 extern Datum mat_sub_sm(PG_FUNCTION_ARGS);
 extern Datum mat_mul_sm(PG_FUNCTION_ARGS);
+extern Datum mat_apply_gradient(Datum weights, Datum derivatives, float8 learning_rate, int batch_size);
 extern Datum softmax(PG_FUNCTION_ARGS);
 extern Datum softmax_cce(PG_FUNCTION_ARGS);
 extern Datum softmax_cce_internal(Datum inputs_in, Datum labels_in);
