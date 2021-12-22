@@ -598,9 +598,11 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 			Datum x = state->steps[fetchIndex].d.func.fcinfo_data->arg[0]; //nn-output vector
 			Datum y = state->steps[fetchIndex].d.func.fcinfo_data->arg[1]; //labels-vector(needs no derivation)
 
-			Datum newSeedX = matrix_mul_internal(seed, softmax_cce_derive(x, y), false, false); // TODO: Multiply seed by softmax_derive(mat_mul_internal(seed, softmax(...)))
+			Datum newSeedX = matrix_mul_internal(seed, softmax_cce_derive(x, y), false, false); 
+			Datum newSeedY = PointerGetDatum(createScalar(0.0)); //derivative to one-hot is not important, but needs derivation nonetheless
 
-			int stepIndexAfterX = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
+			int stepIndexAfterY = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedY, derivatives);
+			int stepIndexAfterX = ExecLambdaDeriveSubtree(state, stepIndexAfterY, newSeedX, derivatives);
 			resultFetchIndex = stepIndexAfterX;
 			break;
 		}
@@ -661,9 +663,7 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 			Datum x = state->steps[fetchIndex].d.func.fcinfo_data->arg[0];
 			Datum y = state->steps[fetchIndex].d.func.fcinfo_data->arg[1];
 
-			printf("deriv of newSeedX\n");
 			Datum newSeedX = matrix_mul_internal(seed, y, false, true);
-			printf("deriv of newSeedY\n");
 			Datum newSeedY = matrix_mul_internal(x, seed, true, false);
 
 			int startingPointForY = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedY, derivatives);

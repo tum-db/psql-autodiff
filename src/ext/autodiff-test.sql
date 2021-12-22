@@ -400,7 +400,8 @@ insert into nn_table select
 
 -- select * from nn_table, iris3 tablesample bernoulli (1);
 
---params for gd: 1.Number of iterations/epochs  2.number of attributes  3.batch_size(-1 means whole data_set as one batch)  4.learning_rate
+set jit='off';
+-- params for gd: 1.Number of iterations/epochs  2.number of attributes  3.batch_size(-1 means whole data_set as one batch)  4.learning_rate
 select *
 from gradient_descent_m_l1_2((select * from nn_table, iris3 tablesample bernoulli (1)), 
                              (lambda(x)(softmax_cce(tanh_m(x.img**x.w_xh)**x.w_ho, x.one_hot))),
@@ -413,9 +414,9 @@ from gradient_descent_m_l1_2((select * from nn_table, iris3 tablesample bernoull
 -- select id, count*1.0/(select sum(count) from test t2 where t1.id=t2.id) from test t1 where correct=true order by id; 
 ----------------------------------------------------------------------------------------------------------------------
 
+
+
 -------------------------------------    Testing pure SQL Neural Net implementations ----------------------------------------
-
-
 -- select array_agg(array_agg) from generate_series(1,4), (select array_agg(random()) from generate_series(1,20)) as foo;
 -- select array_agg(array_agg) from generate_series(1,20), (select array_agg(random()) from generate_series(1,3)) as foo;
 -- with nn_table(id, w_xh, w_ho) as (
@@ -470,7 +471,9 @@ from gradient_descent_m_l1_2((select * from nn_table, iris3 tablesample bernoull
 --         ) as foo1
 -- ), test as (select id, correct, count(*) as count from (select id, index_max(softmax(tanh_m(img**w_xh)**w_ho))=index_max(one_hot) as correct from iris3, gd) as foo group by id, correct)
 -- select id, count*1.0/(select sum(count) from test t2 where t1.id=t2.id) from test t1 where correct=true order by id;
+
 -- begin;
+-- set jit='off';
 
 -- with gd(id, w_xh, w_ho) as (
 --     select id+1 as id, w_xh - 0.2 * (d_w_xh) as w_xh, w_ho - 0.2 * (d_w_ho) as w_ho

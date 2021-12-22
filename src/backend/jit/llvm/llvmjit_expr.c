@@ -3472,6 +3472,7 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, 		/* Builder containing the pr
 								LLVMValueRef derivatives) /* Datum(therefore pointer) array, containing all derivatives */
 {
 	int resultFetchIndex = fetchIndex;
+	printf("Autodiff L2: Fetchindex: %d\n", fetchIndex);
 	switch (ExecEvalStepOp(state, &(state->steps[fetchIndex])))
 	{
 	case 59: /*EEOP_FIELDSELECT*/ 
@@ -3575,7 +3576,6 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, 		/* Builder containing the pr
 			startingPointY = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, seed, derivatives);
 			stepAfterX = llvm_compile_expr_deriv_subtree(b, mod, state, startingPointY, seed, derivatives);
 			resultFetchIndex = stepAfterX;
-
 			break;
 		}
 		case 1725:
@@ -3593,7 +3593,6 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, 		/* Builder containing the pr
 															 derivatives);
 			stepAfterX = llvm_compile_expr_deriv_subtree(b, mod, state, startingPointY, seed, derivatives);
 			resultFetchIndex = stepAfterX;
-
 			break;
 		}
 		case 232:
@@ -4130,9 +4129,9 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, 		/* Builder containing the pr
 		}
 		case 7801: /* softmax */ 
 		{
-			LLVMValueRef x, y, newSeedX, tmp, softmax_params[2], mat_mul_params[4];
-			LLVMTypeRef softmax_types[2], mat_mul_types[4];
-			int stepIndexAfterX;
+			LLVMValueRef x, y, newSeedX, newSeedY, tmp, softmax_params[2], mat_mul_params[4], scalar_param[1];
+			LLVMTypeRef softmax_types[2], mat_mul_types[4], scalar_type[1];
+			int stepIndexAfterX, stepIndexAfterY;
 
 			x = LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[0], l_ptr(TypeDatum)), "");
 			y = LLVMBuildLoad(b, l_ptr_const((void *)&state->steps[fetchIndex].d.func.fcinfo_data->arg[1], l_ptr(TypeDatum)), "");
@@ -4161,7 +4160,13 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, 		/* Builder containing the pr
 									   (LLVMTypeRef *)&mat_mul_types,
 									   TypeDatum, 4);
 
-			stepIndexAfterX = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives);
+			scalar_param[0] = l_float8_const(0.0);
+			scalar_type[0] = LLVMDoubleType();
+
+			newSeedY = build_EvalCFunc(b, mod, "createScalar", (LLVMValueRef *)&scalar_param, (LLVMTypeRef *)&scalar_type, TypeDatum, 1);
+
+			stepIndexAfterY = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedY, derivatives);
+			stepIndexAfterX = llvm_compile_expr_deriv_subtree(b, mod, state, stepIndexAfterY, newSeedX, derivatives);
 			resultFetchIndex = stepIndexAfterX;
 			break;
 		}
@@ -5124,6 +5129,7 @@ llvm_compile_simple_deriv_subtree(LLVMBuilderRef b,			    /* Builder containing 
 								  int *intermediates_pointer)    /* the stack pointer, as to which values to take from funcVals */
 {
 	int resultFetchIndex = fetchIndex;
+	printf("Autodiff L3/L4: Fetchindex: %d and Stackpointer: %d\n", fetchIndex, *intermediates_pointer);
 	switch (ExecEvalStepOp(state, &(state->steps[fetchIndex])))
 	{
 	case 59: /*EEOP_FIELDSELECT*/
@@ -5794,9 +5800,9 @@ llvm_compile_simple_deriv_subtree(LLVMBuilderRef b,			    /* Builder containing 
 		}
 		case 7801: /* Softmax_CCE */
 		{
-			LLVMValueRef x, y, newSeedX, tmp, params_softmax[2], params_mul[4];
-			LLVMTypeRef types_softmax[2], types_mul[4];
-			int stepAfterX;
+			LLVMValueRef x, y, newSeedX, newSeedY, tmp, params_softmax[2], params_mul[4], param_scalar[1];
+			LLVMTypeRef types_softmax[2], types_mul[4], type_scalar[1];
+			int stepAfterX, stepAfterY;
 			x = funcVals[(*intermediates_pointer)--];
 			y = funcVals[(*intermediates_pointer)--];
 
@@ -5824,7 +5830,13 @@ llvm_compile_simple_deriv_subtree(LLVMBuilderRef b,			    /* Builder containing 
 									   TypeDatum,
 									   4);
 
-			stepAfterX = llvm_compile_simple_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives, funcVals, intermediates_pointer);
+			param_scalar[0] = l_float8_const(0.0);
+			type_scalar[0] = LLVMDoubleType();
+
+			newSeedY = build_EvalCFunc(b, mod, "createScalar", (LLVMValueRef *)&param_scalar, (LLVMTypeRef *)&type_scalar, TypeDatum, 1);
+
+			stepAfterY = llvm_compile_simple_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedY, derivatives, funcVals, intermediates_pointer);
+			stepAfterX = llvm_compile_simple_deriv_subtree(b, mod, state, stepAfterY, newSeedX, derivatives, funcVals, intermediates_pointer);
 			resultFetchIndex = stepAfterX;
 			break;
 		}
@@ -6040,7 +6052,7 @@ llvm_compile_simple_deriv_subtree(LLVMBuilderRef b,			    /* Builder containing 
 
 			newSeedX = build_EvalCFunc(b, mod, "matrix_elem_mult", (LLVMValueRef *)&mat_elem_mul, (LLVMTypeRef *)&mat_elem_mul_types, TypeDatum, 2);
 
-			stepsAfterSubtree = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives);
+			stepsAfterSubtree = llvm_compile_simple_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives, funcVals, intermediates_pointer);
 			resultFetchIndex = stepsAfterSubtree;
 			break;
 		}
@@ -6062,7 +6074,7 @@ llvm_compile_simple_deriv_subtree(LLVMBuilderRef b,			    /* Builder containing 
 
 			newSeedX = build_EvalCFunc(b, mod, "matrix_elem_mult", (LLVMValueRef *)&mat_elem_mul, (LLVMTypeRef *)&mat_elem_mul_types, TypeDatum, 2);
 
-			stepsAfterSubtree = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives);
+			stepsAfterSubtree = llvm_compile_simple_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives, funcVals, intermediates_pointer);
 			resultFetchIndex = stepsAfterSubtree;
 			break;
 		}
@@ -6084,7 +6096,7 @@ llvm_compile_simple_deriv_subtree(LLVMBuilderRef b,			    /* Builder containing 
 
 			newSeedX = build_EvalCFunc(b, mod, "matrix_elem_mult", (LLVMValueRef *)&mat_elem_mul, (LLVMTypeRef *)&mat_elem_mul_types, TypeDatum, 2);
 
-			stepsAfterSubtree = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives);
+			stepsAfterSubtree = llvm_compile_simple_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives, funcVals, intermediates_pointer);
 			resultFetchIndex = stepsAfterSubtree;
 			break;
 		}
@@ -6106,7 +6118,7 @@ llvm_compile_simple_deriv_subtree(LLVMBuilderRef b,			    /* Builder containing 
 
 			newSeedX = build_EvalCFunc(b, mod, "matrix_elem_mult", (LLVMValueRef *)&mat_elem_mul, (LLVMTypeRef *)&mat_elem_mul_types, TypeDatum, 2);
 
-			stepsAfterSubtree = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives);
+			stepsAfterSubtree = llvm_compile_simple_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives, funcVals, intermediates_pointer);
 			resultFetchIndex = stepsAfterSubtree;
 			break;
 		}

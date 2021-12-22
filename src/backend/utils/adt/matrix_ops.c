@@ -35,16 +35,20 @@
  */
 Datum matrix_mul(PG_FUNCTION_ARGS)
 {
-    // printf("begin of matrix_mul_external\n");
+    printf("begin of matrix_mul_external\n");
     //  The formal PostgreSQL array objects:
     ArrayType *a1, *a2, *ret;
 
     // The size of each array:
     int length1, length2;
 
-    if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
+    if (PG_ARGISNULL(0))
     {
-        ereport(ERROR, (errmsg("Matrix Multiplication external: Null pointer passed as Matrix!")));
+        ereport(ERROR, (errmsg("Matrix Multiplication external: Null pointer passed as Matrix A!")));
+    }
+    if (PG_ARGISNULL(1))
+    {
+        ereport(ERROR, (errmsg("Matrix Multiplication external: Null pointer passed as Matrix B!")));
     }
 
     // Extract the PostgreSQL arrays from the parameters passed to this function call.
@@ -153,15 +157,20 @@ Datum matrix_mul(PG_FUNCTION_ARGS)
  */
 Datum matrix_mul_internal(Datum MatA, Datum MatB, const bool transposeA, const bool transposeB) 
 {
-    //printf("begin of matrix_mul_internal\n");
+    printf("begin of matrix_mul_internal\n");
     // The formal PostgreSQL array objects:
     ArrayType *a1, *a2, *ret;
 
     // The size of each array:
     int length1, length2;
 
-    if(DatumGetPointer(MatA) == NULL || DatumGetPointer(MatB) == NULL) {
-        ereport(ERROR, (errmsg("Matrix Multiplication Internal: Null pointer passed as Matrix!")));
+    if(DatumGetPointer(MatA) == NULL) 
+    {
+        ereport(ERROR, (errmsg("Matrix Multiplication Internal: Null pointer passed as Matrix A!")));
+    }
+    if (DatumGetPointer(MatB) == NULL)
+    {
+        ereport(ERROR, (errmsg("Matrix Multiplication Internal: Null pointer passed as Matrix B!")));
     }
 
     // Extract the PostgreSQL arrays from the parameters passed to this function call.
@@ -190,7 +199,7 @@ Datum matrix_mul_internal(Datum MatA, Datum MatB, const bool transposeA, const b
         {
             data[i] *= DatumGetFloat8(((Datum *)ARR_DATA_PTR(a1))[0]);
         }
-        // printf("MatA is scalar, MatB has dimensions: [%d, %d]\n", ARR_DIMS(ret)[0], ARR_DIMS(ret)[1]);
+        printf("MatA is scalar, MatB has dimensions: [%d, %d]\n", ARR_DIMS(ret)[0], ARR_DIMS(ret)[1]);
         PG_RETURN_ARRAYTYPE_P(ret);
     }
     if (isScalar(a2))
@@ -202,7 +211,7 @@ Datum matrix_mul_internal(Datum MatA, Datum MatB, const bool transposeA, const b
         {
             data[i] *= DatumGetFloat8(((Datum *)ARR_DATA_PTR(a2))[0]);
         }
-        // printf("MatB is scalar, MatA has dimensions: [%d, %d]\n", ARR_DIMS(ret)[0], ARR_DIMS(ret)[1]);
+        printf("MatB is scalar, MatA has dimensions: [%d, %d]\n", ARR_DIMS(ret)[0], ARR_DIMS(ret)[1]);
         PG_RETURN_ARRAYTYPE_P(ret);
     }
 
@@ -267,12 +276,22 @@ Datum matrix_mul_internal(Datum MatA, Datum MatB, const bool transposeA, const b
  */
 Datum matrix_add_inplace(Datum MatA, Datum MatB)
 {
-    //printf("begin of matrix_add_inplace\n");
+    printf("begin of matrix_add_inplace\n");
     // The formal PostgreSQL array objects:
     ArrayType *a1, *a2;
 
     // The size of each array:
     int length1, length2;
+
+    if (DatumGetPointer(MatA) == NULL)
+    {
+        ereport(ERROR, (errmsg("Matrix add Internal: Null pointer passed as Matrix A!")));
+    }
+    if (DatumGetPointer(MatB) == NULL)
+    {
+        ereport(ERROR, (errmsg("Matrix add Internal: Null pointer passed as Matrix B!")));
+    }
+
     a1 = DatumGetArrayTypeP(MatA);
     a2 = DatumGetArrayTypeP(MatB);
 
@@ -341,14 +360,18 @@ Datum matrix_elem_mult_external(PG_FUNCTION_ARGS)
  */
 Datum matrix_elem_mult(Datum matA, Datum matB)
 {
-    //printf("begin of matrix_elem_mult\n");
+    printf("begin of matrix_elem_mult\n");
     ArrayType *a, *b, *ret;
     int ndims, length1, length2;
     int *dims;
 
-    if (DatumGetPointer(matA) == NULL || DatumGetPointer(matB) == NULL)
+    if (DatumGetPointer(matA) == NULL)
     {
-        ereport(ERROR, (errmsg("Matrix element-wise Multiplication: MatrixPointers are null")));
+        ereport(ERROR, (errmsg("Matrix Elem-Multiplication Internal: Null pointer passed as Matrix A!")));
+    }
+    if (DatumGetPointer(matB) == NULL)
+    {
+        ereport(ERROR, (errmsg("Matrix Elem-Multiplication Internal: Null pointer passed as Matrix B!")));
     }
 
     a = DatumGetArrayTypeP(matA);
@@ -420,6 +443,7 @@ Datum matrix_elem_mult(Datum matA, Datum matB)
  */
 Datum mat_sub_mm(PG_FUNCTION_ARGS)
 {
+    printf("begin of mat_sub_mm!\n");
     ArrayType *ret, *a1, *a2;
     a1 = PG_GETARG_ARRAYTYPE_P(0);
     a2 = PG_GETARG_ARRAYTYPE_P(1);
@@ -452,6 +476,7 @@ Datum mat_sub_mm(PG_FUNCTION_ARGS)
  */
 Datum mat_sub_ms(PG_FUNCTION_ARGS)
 {
+    printf("begin of mat_sub_ms!\n");
     ArrayType *ret, *a1;
     float8 scalar;
     a1 = PG_GETARG_ARRAYTYPE_P(0);
@@ -474,6 +499,7 @@ Datum mat_sub_ms(PG_FUNCTION_ARGS)
  */
 Datum mat_sub_sm(PG_FUNCTION_ARGS)
 {
+    printf("begin of mat_sub_sm!\n");
     ArrayType *ret, *a1;
     float8 scalar;
     a1 = PG_GETARG_ARRAYTYPE_P(1);
@@ -496,6 +522,7 @@ Datum mat_sub_sm(PG_FUNCTION_ARGS)
  */
 Datum mat_mul_sm(PG_FUNCTION_ARGS)
 {
+    printf("begin of mat_mul_sm!\n");
     ArrayType *ret, *a1;
     float8 scalar;
     a1 = PG_GETARG_ARRAYTYPE_P(1);
@@ -525,9 +552,13 @@ Datum mat_transpose_external(PG_FUNCTION_ARGS) {
  */
 Datum matrix_transpose_internal(Datum MatA)
 {
-    //printf("begin of matrix_transpose_internal\n");
+    printf("begin of matrix_transpose_internal\n");
     // The formal PostgreSQL array objects:
     ArrayType *ret, *org;
+    if (DatumGetPointer(MatA) == NULL)
+    {
+        ereport(ERROR, (errmsg("Matrix Multiplication Internal: Null pointer passed as Matrix A!")));
+    }
     org = DatumGetArrayTypeP(MatA);
 
     int dims[2], lbs[2];
@@ -643,7 +674,16 @@ Datum mat_avg_final(PG_FUNCTION_ARGS)
  *         batch_size -> amount of derivatives, that went int derivatives
  */
 Datum mat_apply_gradient(Datum weights, Datum derivatives, float8 learning_rate, int batch_size){
+    printf("begin of mat_apply_gradient!\n");
     ArrayType *weights_a, *derivatives_a;
+    if (DatumGetPointer(weights) == NULL)
+    {
+        ereport(ERROR, (errmsg("Matrix apply Gradient: Null pointer passed as Matrix weights!")));
+    }
+    if (DatumGetPointer(derivatives) == NULL)
+    {
+        ereport(ERROR, (errmsg("Matrix apply gradient: Null pointer passed as Matrix derivatives!")));
+    }
     weights_a = DatumGetArrayTypeP(weights);
     derivatives_a = DatumGetArrayTypeP(derivatives);
 
@@ -705,6 +745,7 @@ Datum index_max(PG_FUNCTION_ARGS) {
  */
 Datum softmax(PG_FUNCTION_ARGS)
 {
+    printf("begin of mat_softmax (without cross-entropy loss)!\n");
     ArrayType *array;
 
     if(PG_ARGISNULL(0)) {
@@ -745,8 +786,16 @@ inline Datum softmax_cce(PG_FUNCTION_ARGS)
  */
 Datum softmax_cce_internal(Datum inputs_in, Datum labels_in)
 {
-    //printf("begin of softmax_cce_internal\n");
+    printf("begin of softmax_cce_internal\n");
     ArrayType *input, *labels;
+    if (DatumGetPointer(inputs_in) == NULL)
+    {
+        ereport(ERROR, (errmsg("Matrix Multiplication Internal: Null pointer passed as Matrix Inputs!")));
+    }
+    if (DatumGetPointer(labels_in) == NULL)
+    {
+        ereport(ERROR, (errmsg("Matrix Multiplication Internal: Null pointer passed as Matrix Labels!")));
+    }
     input = DatumGetArrayTypeP(inputs_in);
     labels = DatumGetArrayTypeP(labels_in);
     float8 max, sum = 0.0;
@@ -808,8 +857,16 @@ Datum softmax_cce_internal(Datum inputs_in, Datum labels_in)
  */
 Datum softmax_cce_derive(Datum inputs_in, Datum labels_in)
 {
-    //printf("begin of softmax_cce_derive\n");
+    printf("begin of softmax_cce_derive\n");
     ArrayType *input_arr, *labels_arr, *result_arr;
+    if (DatumGetPointer(inputs_in) == NULL)
+    {
+        ereport(ERROR, (errmsg("Matrix Multiplication Internal: Null pointer passed as Matrix Inputs!")));
+    }
+    if (DatumGetPointer(labels_in) == NULL)
+    {
+        ereport(ERROR, (errmsg("Matrix Multiplication Internal: Null pointer passed as Matrix Labels!")));
+    }
     input_arr = DatumGetArrayTypeP(inputs_in);
     labels_arr = DatumGetArrayTypeP(labels_in);
     float8 max, sum = 0.0;
@@ -871,6 +928,10 @@ Datum silu_m(PG_FUNCTION_ARGS)
 Datum silu_m_internal(Datum input)
 {
     //printf("begin of silu_m_internal\n");
+    if (DatumGetPointer(input) == NULL)
+    {
+        ereport(ERROR, (errmsg("Matrix Silu Internal: Null pointer passed as Matrix Inputs!")));
+    }
     ArrayType *ret = copyArray(input);
     Datum *data = ARR_DATA_PTR(ret);
 #pragma omp parallel for
@@ -886,6 +947,10 @@ Datum silu_m_internal(Datum input)
 Datum silu_m_derive(Datum input)
 {
     //printf("begin of silu_m_derive\n");
+    if (DatumGetPointer(input) == NULL)
+    {
+        ereport(ERROR, (errmsg("Matrix Silu Derive: Null pointer passed as Matrix Inputs!")));
+    }
     ArrayType *ret = copyArray(input);
     Datum *data = ARR_DATA_PTR(ret);
 #pragma omp parallel for
@@ -909,6 +974,10 @@ Datum sigmoid_m(PG_FUNCTION_ARGS)
 Datum sigmoid_m_internal(Datum input)
 {
     //printf("begin of sigmoid_m_internal\n");
+    if (DatumGetPointer(input) == NULL)
+    {
+        ereport(ERROR, (errmsg("Matrix Sigmoid Internal: Null pointer passed as Matrix Inputs!")));
+    }
     ArrayType *ret = copyArray(input);
     Datum *data = ARR_DATA_PTR(ret);
 #pragma omp parallel for
@@ -926,6 +995,10 @@ Datum sigmoid_m_internal(Datum input)
 Datum sigmoid_m_derive(Datum input)
 {
     //printf("begin of sigmoid_m_derive\n");
+    if (DatumGetPointer(input) == NULL)
+    {
+        ereport(ERROR, (errmsg("Matrix Sigmoid Derive: Null pointer passed as Matrix Inputs!")));
+    }
     ArrayType *ret = copyArray(input);
     Datum *data = ARR_DATA_PTR(ret);
 #pragma omp parallel for
@@ -949,7 +1022,11 @@ Datum tanh_m(PG_FUNCTION_ARGS)
 /* tanh_m   -   apply tanh to an entire n-dimensional array*/
 Datum tanh_m_internal(Datum input)
 {
-    //printf("begin of tanh_m_internal\n");
+    printf("begin of tanh_m_internal\n");
+    if (DatumGetPointer(input) == NULL)
+    {
+        ereport(ERROR, (errmsg("Matrix tanh Internal: Null pointer passed as Matrix Inputs!")));
+    }
     ArrayType *ret = copyArray(input);
     Datum *data = ARR_DATA_PTR(ret);
 #pragma omp parallel for
@@ -966,7 +1043,11 @@ Datum tanh_m_internal(Datum input)
 /* tanh_m_derive   -   calculate the derivative of element-wise tanh*/
 Datum tanh_m_derive(Datum input)
 {
-    //printf("begin of tanh_m_derive\n");
+    printf("begin of tanh_m_derive\n");
+    if (DatumGetPointer(input) == NULL)
+    {
+        ereport(ERROR, (errmsg("Matrix tanh derive: Null pointer passed as Matrix Inputs!")));
+    }
     ArrayType *ret = copyArray(input);
     Datum *data = ARR_DATA_PTR(ret);
 #pragma omp parallel for
@@ -991,6 +1072,10 @@ Datum relu_m(PG_FUNCTION_ARGS)
 Datum relu_m_internal(Datum input)
 {
     //printf("begin of relu_m_internal\n");
+    if (DatumGetPointer(input) == NULL)
+    {
+        ereport(ERROR, (errmsg("Matrix relu Internal: Null pointer passed as Matrix Inputs!")));
+    }
     ArrayType *ret = copyArray(input);
     Datum *data = (Datum *)ARR_DATA_PTR(ret);
 #pragma omp parallel for
@@ -1008,6 +1093,10 @@ Datum relu_m_internal(Datum input)
 Datum relu_m_derive(Datum input)
 {
     //printf("begin of relu_m_derive\n");
+    if (DatumGetPointer(input) == NULL)
+    {
+        ereport(ERROR, (errmsg("Matrix relu derive: Null pointer passed as Matrix Inputs!")));
+    }
     ArrayType *ret = copyArray(input);
     Datum *data = (Datum *)ARR_DATA_PTR(ret);
 #pragma omp parallel for
@@ -1049,6 +1138,10 @@ ArrayType *copyArray(Datum orgArray)
 {
     //printf("begin of copyArray\n");
     //get size and dimensions from original
+    if (DatumGetPointer(orgArray) == NULL)
+    {
+        ereport(ERROR, (errmsg("Matrix Copy Array: Null pointer passed as Matrix Inputs!")));
+    }
     ArrayType *original = DatumGetArrayTypeP(orgArray);
     int ndims = ARR_NDIM(original);
     int *dims = ARR_DIMS(original);
@@ -1115,6 +1208,10 @@ Datum createArray(int *dims, const float8 value, const bool identityMatrix)
  * Create the seed for auto_diff algorithm
  */
 Datum createSeedArray(Datum result) {
+    if (DatumGetPointer(result) == NULL)
+    {
+        ereport(ERROR, (errmsg("Matrix createSeedArray: Null pointer passed as Matrix Inputs!")));
+    }
     ArrayType *ret = copyArray(result);
 #pragma omp parallel for
     for(int i = 0; i < ArrayGetNItems(ARR_NDIM(ret), ARR_DIMS(ret)); i++) {
@@ -1141,6 +1238,10 @@ Datum createScalar(float8 value)
  * Check if array is scalar(lbs[0] == -1)
  */
 bool isScalar(ArrayType *in) {
+    if (in == NULL)
+    {
+        ereport(ERROR, (errmsg("Matrix isScalar(): Null pointer passed to Check!")));
+    }
     //Because C is C, we need an if, otherwise the postgres Bool gets converted
     if(ARR_LBOUND(in)[0] == -1) {
         return true;

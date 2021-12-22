@@ -160,39 +160,39 @@ Datum gradient_descent_m_internal_l1_2(PG_FUNCTION_ARGS)
                 derivatives[it] = createScalar(0.0);
             }
 
-            {
-                ExprState *state = castNode(ExprState, lambda->exprstate);
-                for (int s = 0; s < state->steps_len; s++)
-                {
-                    switch (ExecEvalStepOp(state, &(state->steps[s]))) {
-                        case 42:
-                        {
-                            printf("ParamExtern in step %d\n", s);
-                            break;
-                        }
-                        case 59:
-                        {
-                            printf("FieldSelect in step %d\n", s);
-                            break;
-                        }
-                        case 16:
-                        {
-                            printf("Const in step %d\n", s);
-                            break;
-                        }
-                        case 18:
-                        {
-                            printf("FuncExpr(OID: %d) in step %d\n", state->steps[s].d.func.finfo->fn_oid, s);
-                            break;
-                        }
-                        default:
-                        {
-                            printf("Opcode %d in step %d\n", (int)ExecEvalStepOp(state, &(state->steps[s])), s);
-                            break;
-                        }
-                    }
-                }
-            }
+            // {
+            //     ExprState *state = castNode(ExprState, lambda->exprstate);
+            //     for (int s = 0; s < state->steps_len; s++)
+            //     {
+            //         switch (ExecEvalStepOp(state, &(state->steps[s]))) {
+            //             case 42:
+            //             {
+            //                 printf("ParamExtern in step %d\n", s);
+            //                 break;
+            //             }
+            //             case 59:
+            //             {
+            //                 printf("FieldSelect in step %d\n", s);
+            //                 break;
+            //             }
+            //             case 16:
+            //             {
+            //                 printf("Const in step %d\n", s);
+            //                 break;
+            //             }
+            //             case 18:
+            //             {
+            //                 printf("FuncExpr(OID: %d) in step %d\n", state->steps[s].d.func.finfo->fn_oid, s);
+            //                 break;
+            //             }
+            //             default:
+            //             {
+            //                 printf("Opcode %d in step %d\n", (int)ExecEvalStepOp(state, &(state->steps[s])), s);
+            //                 break;
+            //             }
+            //         }
+            //     }
+            // }
 
             PG_LAMBDA_SETARG(lambda, 0, HeapTupleHeaderGetDatum(newTup->t_data));
             Datum result = PG_LAMBDA_DERIVE(lambda, &isnull, derivatives);
@@ -208,7 +208,7 @@ Datum gradient_descent_m_internal_l1_2(PG_FUNCTION_ARGS)
             tuple_counter++;
         }
         tuplestore_rescan(ttsIn);
-        printf("\niteration: %d\n\n", i);
+        //printf("\niteration: %d\n\n", i);
 
         /* Calculate avg of tally and adjust coefficients */
         for (int it = 0; it < num_atts; it++)
