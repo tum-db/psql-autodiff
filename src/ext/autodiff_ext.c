@@ -638,7 +638,6 @@ Datum autodiff_l1_2(PG_FUNCTION_ARGS)
 
 Datum autodiff_l3(PG_FUNCTION_ARGS)
 {
-    printf("\nL3 beginnt ab hier!\n\n");
     ReturnSetInfo *rsinfo = (ReturnSetInfo *)fcinfo->resultinfo;
     LambdaExpr *lambda = PG_GETARG_LAMBDA(1);
 

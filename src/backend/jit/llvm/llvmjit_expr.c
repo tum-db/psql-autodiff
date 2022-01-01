@@ -2987,10 +2987,12 @@ ExecRunCompiledExpr(ExprState *state, ExprContext *econtext, bool *isNull)
 static Datum
 ExecRunCompiledExprDeriv(ExprState *state, ExprContext *econtext, bool *isNull, Datum *derivatives)
 {
+	printf("\nExecRunCompiledExprDeriv: Begin of func\n\n");
 	CompiledExprState *cstate = state->derivefunc_private;
 	ExprStateDeriveFunc func;
 	
 	CheckExprStillValid(state, econtext);
+	printf("\nExecRunCompiledExprDeriv: Before llvm_get_func\n\n");
 
 	llvm_enter_fatal_on_oom();
 	func = (ExprStateDeriveFunc)llvm_get_function(cstate->context,
@@ -3472,7 +3474,7 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, 		/* Builder containing the pr
 								LLVMValueRef derivatives) /* Datum(therefore pointer) array, containing all derivatives */
 {
 	int resultFetchIndex = fetchIndex;
-	printf("Autodiff L2: Fetchindex: %d\n", fetchIndex);
+	//printf("Autodiff L2: Fetchindex: %d\n", fetchIndex);
 	switch (ExecEvalStepOp(state, &(state->steps[fetchIndex])))
 	{
 	case 59: /*EEOP_FIELDSELECT*/ 
@@ -5129,7 +5131,7 @@ llvm_compile_simple_deriv_subtree(LLVMBuilderRef b,			    /* Builder containing 
 								  int *intermediates_pointer)    /* the stack pointer, as to which values to take from funcVals */
 {
 	int resultFetchIndex = fetchIndex;
-	printf("Autodiff L3/L4: Fetchindex: %d and Stackpointer: %d\n", fetchIndex, *intermediates_pointer);
+	//printf("Autodiff L3/L4: Fetchindex: %d and Stackpointer: %d\n", fetchIndex, *intermediates_pointer);
 	switch (ExecEvalStepOp(state, &(state->steps[fetchIndex])))
 	{
 	case 59: /*EEOP_FIELDSELECT*/

@@ -218,7 +218,7 @@ ExecInitLambdaExpr(Node *node, bool fastLambda, bool buildDiff)
 			ereport(WARNING,
 					(errmsg("lambda expression could not be JIT-compiled; please make sure "
 							"LLVM is enabled.")));
-
+			
 			ExecReadyDeriveExpr(state);
 		}
 	} else {

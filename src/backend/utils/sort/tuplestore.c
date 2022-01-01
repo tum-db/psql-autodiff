@@ -1091,6 +1091,7 @@ tuplestore_gettupleslot(Tuplestorestate *state, bool forward,
 			should_free = true;
 		}
 		ExecStoreMinimalTuple(tuple, slot, should_free);
+
 		return true;
 	}
 	else

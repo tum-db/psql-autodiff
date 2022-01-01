@@ -224,7 +224,6 @@ jit_force_compile_expr(struct ExprState *state, bool derive)
 			}
 		}
 	}
-
 	return false;
 }
 

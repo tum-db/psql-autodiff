@@ -35,7 +35,7 @@
  */
 Datum matrix_mul(PG_FUNCTION_ARGS)
 {
-    printf("begin of matrix_mul_external\n");
+    //printf("begin of matrix_mul_external\n");
     //  The formal PostgreSQL array objects:
     ArrayType *a1, *a2, *ret;
 
@@ -157,7 +157,7 @@ Datum matrix_mul(PG_FUNCTION_ARGS)
  */
 Datum matrix_mul_internal(Datum MatA, Datum MatB, const bool transposeA, const bool transposeB) 
 {
-    printf("begin of matrix_mul_internal\n");
+    //printf("begin of matrix_mul_internal\n");
     // The formal PostgreSQL array objects:
     ArrayType *a1, *a2, *ret;
 
@@ -199,7 +199,7 @@ Datum matrix_mul_internal(Datum MatA, Datum MatB, const bool transposeA, const b
         {
             data[i] *= DatumGetFloat8(((Datum *)ARR_DATA_PTR(a1))[0]);
         }
-        printf("MatA is scalar, MatB has dimensions: [%d, %d]\n", ARR_DIMS(ret)[0], ARR_DIMS(ret)[1]);
+        //printf("MatA is scalar, MatB has dimensions: [%d, %d]\n", ARR_DIMS(ret)[0], ARR_DIMS(ret)[1]);
         PG_RETURN_ARRAYTYPE_P(ret);
     }
     if (isScalar(a2))
@@ -211,7 +211,7 @@ Datum matrix_mul_internal(Datum MatA, Datum MatB, const bool transposeA, const b
         {
             data[i] *= DatumGetFloat8(((Datum *)ARR_DATA_PTR(a2))[0]);
         }
-        printf("MatB is scalar, MatA has dimensions: [%d, %d]\n", ARR_DIMS(ret)[0], ARR_DIMS(ret)[1]);
+        //printf("MatB is scalar, MatA has dimensions: [%d, %d]\n", ARR_DIMS(ret)[0], ARR_DIMS(ret)[1]);
         PG_RETURN_ARRAYTYPE_P(ret);
     }
 
@@ -276,7 +276,7 @@ Datum matrix_mul_internal(Datum MatA, Datum MatB, const bool transposeA, const b
  */
 Datum matrix_add_inplace(Datum MatA, Datum MatB)
 {
-    printf("begin of matrix_add_inplace\n");
+    //printf("begin of matrix_add_inplace\n");
     // The formal PostgreSQL array objects:
     ArrayType *a1, *a2;
 
@@ -360,7 +360,7 @@ Datum matrix_elem_mult_external(PG_FUNCTION_ARGS)
  */
 Datum matrix_elem_mult(Datum matA, Datum matB)
 {
-    printf("begin of matrix_elem_mult\n");
+    //printf("begin of matrix_elem_mult\n");
     ArrayType *a, *b, *ret;
     int ndims, length1, length2;
     int *dims;
@@ -443,7 +443,7 @@ Datum matrix_elem_mult(Datum matA, Datum matB)
  */
 Datum mat_sub_mm(PG_FUNCTION_ARGS)
 {
-    printf("begin of mat_sub_mm!\n");
+    //printf("begin of mat_sub_mm!\n");
     ArrayType *ret, *a1, *a2;
     a1 = PG_GETARG_ARRAYTYPE_P(0);
     a2 = PG_GETARG_ARRAYTYPE_P(1);
@@ -476,7 +476,7 @@ Datum mat_sub_mm(PG_FUNCTION_ARGS)
  */
 Datum mat_sub_ms(PG_FUNCTION_ARGS)
 {
-    printf("begin of mat_sub_ms!\n");
+    //printf("begin of mat_sub_ms!\n");
     ArrayType *ret, *a1;
     float8 scalar;
     a1 = PG_GETARG_ARRAYTYPE_P(0);
@@ -499,7 +499,7 @@ Datum mat_sub_ms(PG_FUNCTION_ARGS)
  */
 Datum mat_sub_sm(PG_FUNCTION_ARGS)
 {
-    printf("begin of mat_sub_sm!\n");
+    //printf("begin of mat_sub_sm!\n");
     ArrayType *ret, *a1;
     float8 scalar;
     a1 = PG_GETARG_ARRAYTYPE_P(1);
@@ -522,7 +522,7 @@ Datum mat_sub_sm(PG_FUNCTION_ARGS)
  */
 Datum mat_mul_sm(PG_FUNCTION_ARGS)
 {
-    printf("begin of mat_mul_sm!\n");
+    //printf("begin of mat_mul_sm!\n");
     ArrayType *ret, *a1;
     float8 scalar;
     a1 = PG_GETARG_ARRAYTYPE_P(1);
@@ -552,7 +552,7 @@ Datum mat_transpose_external(PG_FUNCTION_ARGS) {
  */
 Datum matrix_transpose_internal(Datum MatA)
 {
-    printf("begin of matrix_transpose_internal\n");
+    //printf("begin of matrix_transpose_internal\n");
     // The formal PostgreSQL array objects:
     ArrayType *ret, *org;
     if (DatumGetPointer(MatA) == NULL)
@@ -674,7 +674,7 @@ Datum mat_avg_final(PG_FUNCTION_ARGS)
  *         batch_size -> amount of derivatives, that went int derivatives
  */
 Datum mat_apply_gradient(Datum weights, Datum derivatives, float8 learning_rate, int batch_size){
-    printf("begin of mat_apply_gradient!\n");
+    //printf("begin of mat_apply_gradient!\n");
     ArrayType *weights_a, *derivatives_a;
     if (DatumGetPointer(weights) == NULL)
     {
@@ -696,7 +696,9 @@ Datum mat_apply_gradient(Datum weights, Datum derivatives, float8 learning_rate,
         PG_RETURN_ARRAYTYPE_P(weights_a);
     }
     if(isScalar(derivatives_a)) {
-        ereport(ERROR, (errmsg("mat_apply_gradient: The to-be-applied gradient cannot be a scalar!")));
+        // ereport(ERROR, (errmsg("mat_apply_gradient: The to-be-applied gradient cannot be a scalar!")));
+        ereport(WARNING, (errmsg("mat_apply_gradient: The to-be-applied gradient cannot be a scalar!")));
+        PG_RETURN_ARRAYTYPE_P(weights_a);
     }
 
     int ndims = ARR_NDIM(weights_a);
@@ -705,7 +707,7 @@ Datum mat_apply_gradient(Datum weights, Datum derivatives, float8 learning_rate,
         ereport(ERROR, (errmsg("mat_apply_gradient: derivatives and weight matrix do not match!")));
     }
     for(int i = 0; i < ndims; i++) {
-        if(dims[i] != ARR_DIMS(derivatives_a)) {
+        if(dims[i] != ARR_DIMS(derivatives_a)[i]) {
             ereport(ERROR, (errmsg("mat_apply_gradient: Dimensions do not match in derivatives and weights!")));
         }
     }
@@ -745,7 +747,7 @@ Datum index_max(PG_FUNCTION_ARGS) {
  */
 Datum softmax(PG_FUNCTION_ARGS)
 {
-    printf("begin of mat_softmax (without cross-entropy loss)!\n");
+    //printf("begin of mat_softmax (without cross-entropy loss)!\n");
     ArrayType *array;
 
     if(PG_ARGISNULL(0)) {
@@ -776,7 +778,7 @@ Datum softmax(PG_FUNCTION_ARGS)
 /*
  *		softmax, returns the softmax_cce loss of arg1 as inputs and arg2 as labels(one_hot)
  */
-inline Datum softmax_cce(PG_FUNCTION_ARGS)
+Datum softmax_cce(PG_FUNCTION_ARGS)
 {
     return softmax_cce_internal(PG_GETARG_DATUM(0), PG_GETARG_DATUM(1));
 }
@@ -786,15 +788,15 @@ inline Datum softmax_cce(PG_FUNCTION_ARGS)
  */
 Datum softmax_cce_internal(Datum inputs_in, Datum labels_in)
 {
-    printf("begin of softmax_cce_internal\n");
+    //printf("begin of softmax_cce_internal\n");
     ArrayType *input, *labels;
     if (DatumGetPointer(inputs_in) == NULL)
     {
-        ereport(ERROR, (errmsg("Matrix Multiplication Internal: Null pointer passed as Matrix Inputs!")));
+        ereport(ERROR, (errmsg("Matrix SoftMax Internal: Null pointer passed as Matrix Inputs!")));
     }
     if (DatumGetPointer(labels_in) == NULL)
     {
-        ereport(ERROR, (errmsg("Matrix Multiplication Internal: Null pointer passed as Matrix Labels!")));
+        ereport(ERROR, (errmsg("Matrix SoftMax Internal: Null pointer passed as Matrix Labels!")));
     }
     input = DatumGetArrayTypeP(inputs_in);
     labels = DatumGetArrayTypeP(labels_in);
@@ -803,17 +805,23 @@ Datum softmax_cce_internal(Datum inputs_in, Datum labels_in)
     float8 *label_data = (float8 *)ARR_DATA_PTR(labels);
 
     int length = ArrayGetNItems(ARR_NDIM(input), ARR_DIMS(input));
-    if (length != ArrayGetNItems(ARR_NDIM(labels), ARR_DIMS(labels)))
+    if (ARR_NDIM(input) != ARR_NDIM(labels))
     {
-        ereport(ERROR, (errmsg("Softmax: Arrays *labels* and *input* do not match!")));
+        ereport(ERROR, (errmsg("Softmax CCE: Arrays *labels* and *input* do not have same number of dims! (#dims labels: %d <-> %d :#dims input)", ARR_NDIM(labels), ARR_NDIM(input))));
+    }
+    for (int i = 0; i < ARR_NDIM(input); i++) {
+        if (ARR_DIMS(labels)[i] != ARR_DIMS(input)[i])
+        {
+            ereport(ERROR, (errmsg("Softmax CCE: Dim %d does not match (dim in 'labels': %d <-> %d :dim in 'input')", i, ARR_DIMS(labels)[i], ARR_DIMS(input)[i])));
+        }
     }
     if ((ARR_NDIM(input) > 2 && ARR_NDIM(input) <= 0) || (ARR_NDIM(input) == 2 && ARR_DIMS(input)[0] != 1))
     {
-        ereport(ERROR, (errmsg("Softmax: Array *input* is not a vector!")));
+        ereport(ERROR, (errmsg("Softmax CCE: Array *input* is not a vector!")));
     }
     if ((ARR_NDIM(labels) > 2 && ARR_NDIM(labels) <= 0) || (ARR_NDIM(labels) == 2 && ARR_DIMS(labels)[0] != 1))
     {
-        ereport(ERROR, (errmsg("Softmax: Array *labels* is not a vector!")));
+        ereport(ERROR, (errmsg("Softmax CCE: Array *labels* is not a vector!")));
     }
     float8 *result = (float8 *)palloc0(length * sizeof(float8));
 
@@ -857,15 +865,15 @@ Datum softmax_cce_internal(Datum inputs_in, Datum labels_in)
  */
 Datum softmax_cce_derive(Datum inputs_in, Datum labels_in)
 {
-    printf("begin of softmax_cce_derive\n");
+    //printf("begin of softmax_cce_derive\n");
     ArrayType *input_arr, *labels_arr, *result_arr;
     if (DatumGetPointer(inputs_in) == NULL)
     {
-        ereport(ERROR, (errmsg("Matrix Multiplication Internal: Null pointer passed as Matrix Inputs!")));
+        ereport(ERROR, (errmsg("Matrix SoftMax Derive: Null pointer passed as Matrix Inputs!")));
     }
     if (DatumGetPointer(labels_in) == NULL)
     {
-        ereport(ERROR, (errmsg("Matrix Multiplication Internal: Null pointer passed as Matrix Labels!")));
+        ereport(ERROR, (errmsg("Matrix SoftMax Derive: Null pointer passed as Matrix Labels!")));
     }
     input_arr = DatumGetArrayTypeP(inputs_in);
     labels_arr = DatumGetArrayTypeP(labels_in);
@@ -1022,7 +1030,7 @@ Datum tanh_m(PG_FUNCTION_ARGS)
 /* tanh_m   -   apply tanh to an entire n-dimensional array*/
 Datum tanh_m_internal(Datum input)
 {
-    printf("begin of tanh_m_internal\n");
+    //printf("begin of tanh_m_internal\n");
     if (DatumGetPointer(input) == NULL)
     {
         ereport(ERROR, (errmsg("Matrix tanh Internal: Null pointer passed as Matrix Inputs!")));
@@ -1043,7 +1051,7 @@ Datum tanh_m_internal(Datum input)
 /* tanh_m_derive   -   calculate the derivative of element-wise tanh*/
 Datum tanh_m_derive(Datum input)
 {
-    printf("begin of tanh_m_derive\n");
+    //printf("begin of tanh_m_derive\n");
     if (DatumGetPointer(input) == NULL)
     {
         ereport(ERROR, (errmsg("Matrix tanh derive: Null pointer passed as Matrix Inputs!")));

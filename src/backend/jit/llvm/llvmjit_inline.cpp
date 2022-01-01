@@ -438,6 +438,11 @@ Datum (*llvm_prepare_simple_expression(ExprState *state))(Datum **)
  */
 Datum (*llvm_prepare_simple_expression_derivation(ExprState *state))(Datum **, Datum *)
 {
+	if(state->derivefunc_simple_private == NULL) {
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("Derive_func(L3) could not be compiled! Is jit enabled? (set jit='on';)")));
+	}
 	CompiledExprState *cstate = (CompiledExprState *)state->derivefunc_simple_private;
 	Datum (*func)(Datum **, Datum *);
 

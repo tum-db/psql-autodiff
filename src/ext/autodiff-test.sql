@@ -119,20 +119,20 @@ as '/home/clemens/masterarbeit/psql-autodiff/src/ext/gradient_desc_ext.so','grad
 language C STRICT;
 
 --parameters: inputtable(weights and data combined), lambdafunction, iterations, num attrs, batch size(if 0 or lower, BGD will be done, otherwise mini-batchGD), learning_rate
-create or replace function gradient_descent_m_l1_2(lambdatable, "lambda", int, int, int, float)
-returns setof record
-as '/home/clemens/masterarbeit/psql-autodiff/src/ext/gradient_desc_m_ext.so','gradient_descent_m_l1_2'
-language C STRICT;
+-- create or replace function gradient_descent_m_l1_2(lambdatable, "lambda", int, int, int, float)
+-- returns setof record
+-- as '/home/clemens/masterarbeit/psql-autodiff/src/ext/gradient_desc_m_ext.so','gradient_descent_m_l1_2'
+-- language C STRICT;
 
 create or replace function gradient_descent_m_l3(lambdatable, "lambda", int, int, int, float)
 returns setof record
 as '/home/clemens/masterarbeit/psql-autodiff/src/ext/gradient_desc_m_ext.so','gradient_descent_m_l3'
 language C STRICT;
 
-create or replace function gradient_descent_m_l4(lambdatable, "lambda", int, int, int, float)
-returns setof record
-as '/home/clemens/masterarbeit/psql-autodiff/src/ext/gradient_desc_m_ext.so','gradient_descent_m_l4'
-language C STRICT;
+-- create or replace function gradient_descent_m_l4(lambdatable, "lambda", int, int, int, float)
+-- returns setof record
+-- as '/home/clemens/masterarbeit/psql-autodiff/src/ext/gradient_desc_m_ext.so','gradient_descent_m_l4'
+-- language C STRICT;
 ----------------------------------------------------------------------------------------------------------------------------------------
 
 
@@ -170,7 +170,7 @@ language C STRICT;
 -- select * from pagerank_threads((select * from pages), (lambda(src)(src.src)), (lambda(dst)(dst.dst)), 0.85, 0.00001, 100, 100) limit 10;
 
 -- set jit='off';
--- select * from autodiff_l1_2((select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
+-- select * from autodiff_l1_2((select x, y from nums_numeric), (lambda(a)(sin(a.x * a.y) + a.x * a.y))) limit 10;
 -- set jit='on';
 -- select * from autodiff_l1_2((select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
 -- select * from autodiff_l3(  (select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
@@ -339,11 +339,11 @@ language C STRICT;
 -- insert into gd values (10::float, 10::float, 10::float, 10::float, 10::float, 10::float, 10::float, 10::float, 10::float);
 
 -- set jit='off';
---params for gd: 1.Number of iterations/epochs  2.number of attributes  3.batch_size(-1 means whole data_set as one batch)  4.learning_rate
+-- -- --params for gd: 1.Number of iterations/epochs  2.number of attributes  3.batch_size(-1 means whole data_set as one batch)  4.learning_rate
 -- select *
--- from gradient_descent_l1_2((select * from gd, (select * from data limit 1000) as pg_alias), 
---                       lambda(x)((x.a1*x.x1 + x.a2*x.x2 + x.a3*x.x3 + x.a4*x.x4 + x.a5*x.x5 + x.a6*x.x6 + x.a7*x.x7 + x.a8*x.x8 + x.b - x.y8)^2), 
---                       100, 9, -1, 0.001);
+-- from gradient_descent_l1_2((select a1, a2, b, x1, x2, y1 from gd, (select x1, x2, y1 from data limit 100) as pg_alias), 
+--                       lambda(x)((x.a1*x.x1 + x.a2*x.x2 + x.b - x.y1)^2), 
+--                       10, 3, -1, 0.001);
 
 -- select autodiff_l1_2.result
 -- from autodiff_l1_2((select * from gd, (select * from data limit 1) as pg_alias), 
@@ -382,30 +382,34 @@ language C STRICT;
 
 
 -------------------------------------    Testing GD operator with neural nets ----------------------------------------
-drop table if exists nn_table;
-drop table if exists iris;
-drop table if exists iris3;
+-- drop table if exists nn_table;
+-- drop table if exists iris;
+-- drop table if exists iris3;
 
-create table if not exists iris (sepal_length float,sepal_width float,petal_length float,petal_width float,species int);
-create table if not exists iris3 (img float[], one_hot float[]);
+-- create table if not exists iris (sepal_length float, sepal_width float, petal_length float, petal_width float, species int);
+-- create table if not exists iris3 (img float[], one_hot float[]);
 
-copy iris from '/home/clemens/masterarbeit/psql-autodiff/src/ext/iris.csv' DELIMITER ',' CSV HEADER;
-insert into iris3 (select array[[sepal_length/10,sepal_width/10,petal_length/10,petal_width/10]] as img, 
-                    array[(array_fill(0::float,array[species]) || 1::float ) || array_fill(0::float,array[2-species])] as one_hot from iris limit 150);
+-- copy iris from '/home/clemens/masterarbeit/psql-autodiff/src/ext/iris.csv' DELIMITER ',' CSV HEADER;
+-- insert into iris3 (select array[[sepal_length/10, sepal_width/10, petal_length/10, petal_width/10]] as img, 
+--                     array[(array_fill(0::float, array[species]) || 1::float ) || array_fill(0::float, array[2-species])] as one_hot from iris limit 150);
 
-create table nn_table(w_xh float array not null, w_ho float array not null);
-insert into nn_table select
-    (select array_agg(array_agg) from generate_series(1,4), (select array_agg(random()) from generate_series(1,20)) as foo),
-    (select array_agg(array_agg) from generate_series(1,20), (select array_agg(random()) from generate_series(1,3)) as foo);
+-- create table nn_table(w_xh float array not null, w_ho float array not null);
+-- insert into nn_table select
+--     (select array_agg(array_agg) from generate_series(1,4), (select array_agg(random()) from generate_series(1,20)) as foo),
+--     (select array_agg(array_agg) from generate_series(1,20), (select array_agg(random()) from generate_series(1,3)) as foo);
 
--- select * from nn_table, iris3 tablesample bernoulli (1);
+-- -- select array_dims(tanh_m(img**w_xh)**w_ho), array_dims(one_hot) from nn_table, iris3 limit 1;
 
-set jit='off';
--- params for gd: 1.Number of iterations/epochs  2.number of attributes  3.batch_size(-1 means whole data_set as one batch)  4.learning_rate
-select *
-from gradient_descent_m_l1_2((select * from nn_table, iris3 tablesample bernoulli (1)), 
-                             (lambda(x)(softmax_cce(tanh_m(x.img**x.w_xh)**x.w_ho, x.one_hot))),
-                             1, 2, -1, 0.001);
+-- -- set jit='off';
+-- -- params for gd: 1.Number of iterations/epochs  2.number of attributes  3.batch_size(-1 means whole data_set as one batch)  4.learning_rate
+-- set jit='on';
+
+-- select * from gradient_descent_m_l3((select * from nn_table, iris3 limit 5), 
+--                              (lambda(x)(softmax_cce(tanh_m(x.img**x.w_xh)**x.w_ho, x.one_hot))),
+--                              10, 2, -1, 0.001);
+-- set jit='on';
+-- select * from autodiff_l3((select * from nn_table, (select * from iris3 tablesample bernoulli (10)) as pg_alias), 
+--                              (lambda(x)(softmax_cce(tanh_m(x.img**x.w_xh)**x.w_ho, x.one_hot))));
 
 -- with gd(id, w_xh, w_ho) as (
 --     select w_xh, w_ho
