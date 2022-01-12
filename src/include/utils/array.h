@@ -455,8 +455,8 @@ extern Datum matrix_mul(PG_FUNCTION_ARGS);
 extern Datum matrix_mul_internal(Datum MatA, Datum MatB, bool transposeA, bool transposeB);
 extern Datum mat_transpose_external(PG_FUNCTION_ARGS);
 extern Datum matrix_transpose_internal(Datum MatA);
-extern Datum mat_avg(PG_FUNCTION_ARGS);
-extern Datum mat_avg_final(PG_FUNCTION_ARGS);
+// extern Datum mat_avg(PG_FUNCTION_ARGS);
+// extern Datum mat_avg_final(PG_FUNCTION_ARGS);
 extern Datum matrix_add_inplace(Datum MatA, Datum MatB);
 extern Datum matrix_elem_mult_external(PG_FUNCTION_ARGS);
 extern Datum matrix_elem_mult(Datum matA, Datum matB);
@@ -488,5 +488,7 @@ extern Datum createSeedArray(Datum result);
 extern Datum createScalar(float8 value);
 extern bool isScalar(ArrayType *in);
 extern Datum index_max(PG_FUNCTION_ARGS);
+extern void matrixPrint(ArrayType *in);
+extern void matrixSetValue(Datum in, float8 value);
 
 #endif							/* ARRAY_H */

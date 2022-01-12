@@ -765,21 +765,22 @@ checkWellFormedRecursionWalker(Node *node, CteState *cstate)
 			{
 				//printf("cstate->selfref: %d\n", cstate->selfrefcount + 1);
 				/* Found a recursive reference to the active query */
-				if (cstate->context != RECURSION_OK)
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_RECURSION),
-							 errmsg(recursion_errormsgs[cstate->context],
-									mycte->ctename),
-							 parser_errposition(cstate->pstate,
-												rv->location)));
-				/* Count references */
-				if (++(cstate->selfrefcount) > 1)
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_RECURSION),
-							 errmsg("recursive reference to query \"%s\" must not appear more than once",
-									mycte->ctename),
-							 parser_errposition(cstate->pstate,
-												rv->location)));
+				++(cstate->selfrefcount);
+				// if (cstate->context != RECURSION_OK)
+				// 	ereport(ERROR,
+				// 			(errcode(ERRCODE_INVALID_RECURSION),
+				// 			 errmsg(recursion_errormsgs[cstate->context],
+				// 					mycte->ctename),
+				// 			 parser_errposition(cstate->pstate,
+				// 								rv->location)));
+				// /* Count references */
+				// if (++(cstate->selfrefcount) > 1)
+				// 	ereport(ERROR,
+				// 			(errcode(ERRCODE_INVALID_RECURSION),
+				// 			 errmsg("recursive reference to query \"%s\" must not appear more than once",
+				// 					mycte->ctename),
+				// 			 parser_errposition(cstate->pstate,
+				// 								rv->location)));
 			}
 		}
 		return false;

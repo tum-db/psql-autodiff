@@ -2987,12 +2987,12 @@ ExecRunCompiledExpr(ExprState *state, ExprContext *econtext, bool *isNull)
 static Datum
 ExecRunCompiledExprDeriv(ExprState *state, ExprContext *econtext, bool *isNull, Datum *derivatives)
 {
-	printf("\nExecRunCompiledExprDeriv: Begin of func\n\n");
+	//printf("\nExecRunCompiledExprDeriv: Begin of func\n\n");
 	CompiledExprState *cstate = state->derivefunc_private;
 	ExprStateDeriveFunc func;
 	
 	CheckExprStillValid(state, econtext);
-	printf("\nExecRunCompiledExprDeriv: Before llvm_get_func\n\n");
+	//printf("\nExecRunCompiledExprDeriv: Before llvm_get_func\n\n");
 
 	llvm_enter_fatal_on_oom();
 	func = (ExprStateDeriveFunc)llvm_get_function(cstate->context,
@@ -3298,10 +3298,10 @@ bool llvm_compile_expr_derive(ExprState *state)
 				}
 				else
 				{
-					types[0] = TypeDatum;
-					params[0] = v_tmpvalue;
+					types[0] = LLVMDoubleType();
+					params[0] = l_float8_const(1.0);
 
-					v_seed = build_EvalCFunc(b, mod, "createSeedArray",
+					v_seed = build_EvalCFunc(b, mod, "createScalar",
 											 (LLVMValueRef *)&params,
 											 (LLVMTypeRef *)&types,
 											 TypeDatum,
@@ -4587,14 +4587,14 @@ bool llvm_compile_simple_expr_derive(ExprState *state)
 				}
 				else
 				{
-					types[0] = TypeDatum;
-					params[0] = registers[registerPointer - 1];
+					types[0] = LLVMDoubleType();
+					params[0] = l_float8_const(1.0);
 
-					seed = build_EvalCFunc(b, mod, "createSeedArray",
-											 (LLVMValueRef *)&params,
-											 (LLVMTypeRef *)&types,
-											 TypeDatum,
-											 1);
+					seed = build_EvalCFunc(b, mod, "createScalar",
+										   (LLVMValueRef *)&params,
+										   (LLVMTypeRef *)&types,
+										   TypeDatum,
+										   1);
 				}
 			}
 			else
@@ -5189,7 +5189,6 @@ llvm_compile_simple_deriv_subtree(LLVMBuilderRef b,			    /* Builder containing 
 			LLVMValueRef x, y, newSeedX, newSeedY;
 			int startingPointY, stepAfterX;
 
-			//TODO: Read value from fn_info
 			y = l_as_float8(b, funcVals[(*intermediates_pointer)--]);
 			x = l_as_float8(b, funcVals[(*intermediates_pointer)--]);
 
@@ -5805,8 +5804,8 @@ llvm_compile_simple_deriv_subtree(LLVMBuilderRef b,			    /* Builder containing 
 			LLVMValueRef x, y, newSeedX, newSeedY, tmp, params_softmax[2], params_mul[4], param_scalar[1];
 			LLVMTypeRef types_softmax[2], types_mul[4], type_scalar[1];
 			int stepAfterX, stepAfterY;
-			x = funcVals[(*intermediates_pointer)--];
 			y = funcVals[(*intermediates_pointer)--];
+			x = funcVals[(*intermediates_pointer)--];
 
 			params_softmax[0] = x;       			
 			params_softmax[1] = y;

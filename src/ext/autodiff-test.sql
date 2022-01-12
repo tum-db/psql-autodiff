@@ -221,15 +221,95 @@ language C STRICT;
 -- begin;
 -- set jit='on';
 -- \timing on
--- select * from autodiff_t_l2((select x1, y1, z1, x2, y2, z2, x3, y3, z3 from nums_large), 
---                             (lambda(x)(relu(x.x1)*(x.x3*x.x2 + x.y1*x.y3 - x.z2*x.z3)^2 + relu(x.y1)*(x.x3*x.x2 - x.y1*x.y3 + x.z2*x.z3)^2 + relu(x.z1)*(x.x3*x.x2 - x.y1*x.y3 + x.z2*x.z3)^2))) limit 1;
--- select * from autodiff_t_l2((select x1, y1, z1, x2, y2, z2, x3, y3, z3 from nums_large limit 1), 
+-- explain analyze
+-- select * from autodiff_l1_2((select x1, y1, z1, x2, y2, z2, x3, y3, z3 from nums_large), 
 --                             (lambda(x)(relu(x.x1)*(x.x3*x.x2 + x.y1*x.y3 - x.z2*x.z3)^2 + relu(x.y1)*(x.x3*x.x2 - x.y1*x.y3 + x.z2*x.z3)^2 + relu(x.z1)*(x.x3*x.x2 - x.y1*x.y3 + x.z2*x.z3)^2)));
--- -- select * from autodiff_t_l3(  (select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
--- -- select * from autodiff_t_l4(  (select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
+-- explain analyze
+-- select * from autodiff_l1_2((select x1, y1, z1, x2, y2, z2, x3, y3, z3 from nums_large limit 1), 
+--                             (lambda(x)(relu(x.x1)*(x.x3*x.x2 + x.y1*x.y3 - x.z2*x.z3)^2 + relu(x.y1)*(x.x3*x.x2 - x.y1*x.y3 + x.z2*x.z3)^2 + relu(x.z1)*(x.x3*x.x2 - x.y1*x.y3 + x.z2*x.z3)^2)));
+-- \echo "\n\n\n"
+-- explain analyze
+-- select * from autodiff_l3((select x1, y1, z1, x2, y2, z2, x3, y3, z3 from nums_large), 
+--                             (lambda(x)(relu(x.x1)*(x.x3*x.x2 + x.y1*x.y3 - x.z2*x.z3)^2 + relu(x.y1)*(x.x3*x.x2 - x.y1*x.y3 + x.z2*x.z3)^2 + relu(x.z1)*(x.x3*x.x2 - x.y1*x.y3 + x.z2*x.z3)^2)));
+-- explain analyze
+-- select * from autodiff_l3((select x1, y1, z1, x2, y2, z2, x3, y3, z3 from nums_large limit 1), 
+--                             (lambda(x)(relu(x.x1)*(x.x3*x.x2 + x.y1*x.y3 - x.z2*x.z3)^2 + relu(x.y1)*(x.x3*x.x2 - x.y1*x.y3 + x.z2*x.z3)^2 + relu(x.z1)*(x.x3*x.x2 - x.y1*x.y3 + x.z2*x.z3)^2)));
+-- \echo "\n\n\n"
+-- explain analyze
+-- select * from autodiff_l4((select x1, y1, z1, x2, y2, z2, x3, y3, z3 from nums_large), 
+--                             (lambda(x)(relu(x.x1)*(x.x3*x.x2 + x.y1*x.y3 - x.z2*x.z3)^2 + relu(x.y1)*(x.x3*x.x2 - x.y1*x.y3 + x.z2*x.z3)^2 + relu(x.z1)*(x.x3*x.x2 - x.y1*x.y3 + x.z2*x.z3)^2)));
+-- explain analyze
+-- select * from autodiff_l4((select x1, y1, z1, x2, y2, z2, x3, y3, z3 from nums_large limit 1), 
+--                             (lambda(x)(relu(x.x1)*(x.x3*x.x2 + x.y1*x.y3 - x.z2*x.z3)^2 + relu(x.y1)*(x.x3*x.x2 - x.y1*x.y3 + x.z2*x.z3)^2 + relu(x.z1)*(x.x3*x.x2 - x.y1*x.y3 + x.z2*x.z3)^2)));
+
 -- commit;
 ----------------------------------------------------------------------------------------------------------------------------------------
 
+----------------------------------------Recursive Tables------------------------------------------------------
+-- set jit='off';
+-- drop table if exists data;
+-- create table data (x1 float, x2 float, y float);
+-- insert into data (select *,0.5+0.8*x1+0.8*x2 from (select random() x1, random() x2 from generate_series(1, 10000)) as my_a);
+
+-- drop table if exists gd;
+-- create table gd(id integer, a1 float, a2 float, b float);
+-- insert into gd values (1, 1::float, 1::float, 1::float);
+
+
+
+-- set jit='off';
+
+-- with recursive gd(id, a1, a2, b) as (
+-- 	select 1, 1::float, 1::float, 1::float
+-- union all
+--     select (id + 1)::integer as id,
+--            (a1- 0.0025 * avg(d_a1))::float as a1,
+--            (a2- 0.0025 * avg(d_a2))::float as a2,
+--            (b - 0.0025 * avg(d_b))::float as b
+--     from autodiff_l1_2((select * from gd, (select * from data) as my_a_2 where id < 200), 
+--                        (lambda(x)((x.a1*x.x1 + x.a2*x.x2 + x.b-x.y)^2)))
+--     group by id, a1, a2, b
+-- )
+-- select * from gd where id=200;
+
+-- drop table if exists nn_table;
+-- drop table if exists iris;
+-- drop table if exists iris3;
+
+-- create table if not exists iris (sepal_length float, sepal_width float, petal_length float, petal_width float, species int);
+-- create table if not exists iris3 (img float[], one_hot float[]);
+
+-- copy iris from '/home/clemens/masterarbeit/psql-autodiff/src/ext/iris.csv' DELIMITER ',' CSV HEADER;
+-- insert into iris3 (select array[[sepal_length/10, sepal_width/10, petal_length/10, petal_width/10]] as img, 
+--                     array[(array_fill(0::float, array[species]) || 1::float ) || array_fill(0::float, array[2-species])] as one_hot from iris limit 150);
+
+-- create table nn_table(w_xh float array not null, w_ho float array not null);
+-- insert into nn_table select
+--     (select array_agg(array_agg) from generate_series(1,4), (select array_agg(random()) from generate_series(1,20)) as foo),
+--     (select array_agg(array_agg) from generate_series(1,20), (select array_agg(random()) from generate_series(1,3)) as foo);
+
+-- select one_hot, tanh_m(img**w_xh)**w_ho as intermediate_res, softmax(tanh_m(img**w_xh)**w_ho) as pred, softmax_cce(tanh_m(img**w_xh)**w_ho, one_hot) as loss from iris3, nn_table limit 1;
+
+-- select *
+-- from autodiff_l1_2((select * from (select * from iris3 /*tablesample bernoulli (2)*/ limit 1) as alias_1, (select * from nn_table) as alias_2), 
+--                     (lambda(x)(softmax_cce(tanh_m(x.img**x.w_xh)**x.w_ho, x.one_hot))));
+
+-- with recursive gd(id, w_xh, w_ho) as (
+--     select 1, (select array_agg(array_agg) from generate_series(1,4), (select array_agg(random()) from generate_series(1,20)) as foo),
+--     (select array_agg(array_agg) from generate_series(1,20), (select array_agg(random()) from generate_series(1,3)) as foo)
+-- union all
+--     select id + 1,
+--            w_xh - 0.05 * d_w_xh, 
+--            w_ho - 0.05 * d_w_ho
+--     from autodiff_l1_2((select * from (select * from gd where id < 5) as alias_1, (select * from iris3 tablesample bernoulli (25) order by random() limit 1) as alias_2), 
+--                        (lambda(x)(softmax_cce(tanh_m(x.img**x.w_xh)**x.w_ho, x.one_hot))))
+-- ) select id from gd;
+-- ), test as (select id, correct, count(*) as count 
+--             from (select id, index_max(softmax(tanh_m(img**w_xh)**w_ho))=index_max(one_hot) as correct from iris3, gd) as foo 
+--             group by id, correct)
+-- select id, count*1.0/(select sum(count) from test t2 where t1.id=t2.id) from test t1 where correct=true order by id; 
+-- select * from test order by id;
+----------------------------------------------------------------------------------------------------------------------------------------
 
 
 -------------------------------------- TESTS FOR GRADIENT DESCENT PURE PL/PGSQL-IMPLEMENTATIONS ----------------------------------------
@@ -400,13 +480,24 @@ language C STRICT;
 
 -- -- select array_dims(tanh_m(img**w_xh)**w_ho), array_dims(one_hot) from nn_table, iris3 limit 1;
 
--- -- set jit='off';
+-- set jit='off';
 -- -- params for gd: 1.Number of iterations/epochs  2.number of attributes  3.batch_size(-1 means whole data_set as one batch)  4.learning_rate
+-- select * from gradient_descent_m_l1_2((select * from nn_table, iris3 limit 15), 
+--                              (lambda(x)(softmax_cce(tanh_m(x.img**x.w_xh)**x.w_ho, x.one_hot))),
+--                              5, 2, -1, 0.001);
 -- set jit='on';
 
--- select * from gradient_descent_m_l3((select * from nn_table, iris3 limit 5), 
+-- select * from gradient_descent_m_l1_2((select * from nn_table, iris3 limit 15), 
+--                              (lambda(x)(softmax_cce(tanh_m(x.img**x.w_xh)**x.w_ho, x.one_hot))),
+--                              5, 2, -1, 0.001);
+
+-- select * from gradient_descent_m_l3((select * from nn_table, iris3 limit 15), 
 --                              (lambda(x)(softmax_cce(tanh_m(x.img**x.w_xh)**x.w_ho, x.one_hot))),
 --                              10, 2, -1, 0.001);
+
+-- select * from gradient_descent_m_l4((select * from nn_table, iris3 limit 15), 
+--                              (lambda(x)(softmax_cce(tanh_m(x.img**x.w_xh)**x.w_ho, x.one_hot))),
+--                              5, 2, -1, 0.001);
 -- set jit='on';
 -- select * from autodiff_l3((select * from nn_table, (select * from iris3 tablesample bernoulli (10)) as pg_alias), 
 --                              (lambda(x)(softmax_cce(tanh_m(x.img**x.w_xh)**x.w_ho, x.one_hot))));

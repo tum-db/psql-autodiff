@@ -33,8 +33,12 @@ extern TupleDesc autodiff_record_type(List *args)
     char attrNamesMapped[64];
     strcpy(attrNamesMapped, "result");
 
-    TupleDescInitEntry(outDesc, (AttrNumber)(inDesc->natts + 1), attrNamesMapped,
-                       lambda->rettype, lambda->rettypmod, 0);
+    TupleDescInitEntry(outDesc,
+                       (AttrNumber)(inDesc->natts + 1),
+                       attrNamesMapped,
+                       (lambda->rettype),
+                       lambda->rettypmod,
+                       0);
 
     for (int i = 0; i < inDesc->natts; i++)
     {
@@ -42,8 +46,12 @@ extern TupleDesc autodiff_record_type(List *args)
         char *column_name = inDesc->attrs[i].attname.data;
         sprintf(buffer, "d_%s", column_name);
 
-        TupleDescInitEntry(outDesc, (AttrNumber)(inDesc->natts + 2 + i), buffer,
-                           lambda->rettype, lambda->rettypmod, 0);
+        TupleDescInitEntry(outDesc,
+                           (AttrNumber)(inDesc->natts + 2 + i),
+                           buffer,
+                           inDesc->attrs[i].atttypid,
+                           inDesc->attrs[i].atttypmod,
+                           inDesc->attrs[i].attndims);
     }
 
     return outDesc;
@@ -136,7 +144,7 @@ Datum autodiff_l1_2_internal(PG_FUNCTION_ARGS)
 
     outDesc = CreateTupleDescCopy(inDesc);
     oldIsNull = (bool *)palloc(inDesc->natts * sizeof(bool));
-    oldVal = (Datum *)palloc(outDesc->natts * sizeof(Datum));
+    oldVal = (Datum *)palloc(inDesc->natts * sizeof(Datum));
 
     outDesc = CreateTemplateTupleDesc(inDesc->natts * 2 + 1, false);
 
@@ -146,8 +154,12 @@ Datum autodiff_l1_2_internal(PG_FUNCTION_ARGS)
             TupleDescCopyEntry(outDesc, (AttrNumber)(i + 1), inDesc, (AttrNumber)(i + 1));
         }
 
-        TupleDescInitEntry(outDesc, (AttrNumber)(inDesc->natts + 1), "result",
-                           lambda->rettype, lambda->rettypmod, 0);
+        TupleDescInitEntry(outDesc, 
+                           (AttrNumber)(inDesc->natts + 1), 
+                           "result",
+                           lambda->rettype, 
+                           lambda->rettypmod, 
+                           0);
 
         for (int i = 0; i < inDesc->natts; i++)
         {
@@ -155,8 +167,12 @@ Datum autodiff_l1_2_internal(PG_FUNCTION_ARGS)
             char *column_name = inDesc->attrs[i].attname.data;
             sprintf(buffer, "d_%s", column_name);
 
-            TupleDescInitEntry(outDesc, (AttrNumber)(inDesc->natts + 2 + i), buffer,
-                               lambda->rettype, lambda->rettypmod, 0);
+            TupleDescInitEntry(outDesc,
+                               (AttrNumber)(inDesc->natts + 1 + i + 1),
+                               buffer,
+                               inDesc->attrs[i].atttypid,
+                               inDesc->attrs[i].atttypmod,
+                               inDesc->attrs[i].attndims);
         }
     }
 
@@ -205,6 +221,7 @@ Datum autodiff_l1_2_internal(PG_FUNCTION_ARGS)
             replVal[i] = val_ptr[i];
             replIsNull[i] = null_ptr[i];
         }
+
         replVal[inDesc->natts] = result;
         replIsNull[inDesc->natts] = false;
 
@@ -215,6 +232,21 @@ Datum autodiff_l1_2_internal(PG_FUNCTION_ARGS)
 
         tuple = heap_form_tuple(outDesc, replVal, replIsNull);
         tuplestore_puttuple(tsOut, tuple);
+
+        // {
+        //     printf("\n\n----------------------Iteration: %d----------------------\n", DatumGetInt32(val_ptr[0]));
+        //     printf("Input image: \n");
+        //     matrixPrint(DatumGetArrayTypeP(val_ptr[3]));
+        //     // printf("Weights Matricies:\n");
+        //     // for (int i = 1; i < 3; i++)
+        //     // {
+        //     //     matrixPrint(DatumGetArrayTypeP(val_ptr[i]));
+        //     // }
+        //     // printf("\n\nAll Derivatives:\n");
+        //     // for(int i = 0; i < inDesc->natts; i++) {
+        //     //     matrixPrint(DatumGetArrayTypeP(derivatives[i]));
+        //     // }
+        // }
     }
 
     rsinfo->returnMode = SFRM_Materialize;
@@ -276,11 +308,12 @@ Datum autodiff_l12_table(PG_FUNCTION_ARGS)
             TupleDescCopyEntry(outDesc, (AttrNumber)(i + 1), inDesc, (AttrNumber)(i + 1));
         }
 
-        char attrNamesMapped[64];
-        strcpy(attrNamesMapped, "Result");
-
-        TupleDescInitEntry(outDesc, (AttrNumber)(inDesc->natts + 1), attrNamesMapped,
-                           lambda->rettype, lambda->rettypmod, 0);
+        TupleDescInitEntry(outDesc,
+                           (AttrNumber)(inDesc->natts + 1),
+                           "result",
+                           lambda->rettype,
+                           lambda->rettypmod,
+                           0);
 
         for (int i = 0; i < inDesc->natts; i++)
         {
@@ -288,8 +321,12 @@ Datum autodiff_l12_table(PG_FUNCTION_ARGS)
             char *column_name = inDesc->attrs[i].attname.data;
             sprintf(buffer, "d_%s", column_name);
 
-            TupleDescInitEntry(outDesc, (AttrNumber)(inDesc->natts + 2 + i), buffer,
-                               lambda->rettype, lambda->rettypmod, 0);
+            TupleDescInitEntry(outDesc,
+                               (AttrNumber)(inDesc->natts + 2 + i),
+                               buffer,
+                               inDesc->attrs[i].atttypid,
+                               inDesc->attrs[i].atttypmod,
+                               inDesc->attrs[i].attndims);
         }
     }
 
@@ -394,17 +431,18 @@ Datum autodiff_l3_internal(PG_FUNCTION_ARGS, Datum (*derivefunc)(Datum **arg, Da
 
     outDesc = CreateTemplateTupleDesc(inDesc->natts * 2 + 1, false);
 
-    {
+    { // register each tuple-descriptor field with the corresponding field name
         for (int i = 0; i < inDesc->natts; i++)
         {
             TupleDescCopyEntry(outDesc, (AttrNumber)(i + 1), inDesc, (AttrNumber)(i + 1));
         }
 
-        char attrNamesMapped[64];
-        strcpy(attrNamesMapped, "result");
-
-        TupleDescInitEntry(outDesc, (AttrNumber)(inDesc->natts + 1), attrNamesMapped,
-                           lambda->rettype, lambda->rettypmod, 0);
+        TupleDescInitEntry(outDesc,
+                           (AttrNumber)(inDesc->natts + 1),
+                           "result",
+                           lambda->rettype,
+                           lambda->rettypmod,
+                           0);
 
         for (int i = 0; i < inDesc->natts; i++)
         {
@@ -412,8 +450,12 @@ Datum autodiff_l3_internal(PG_FUNCTION_ARGS, Datum (*derivefunc)(Datum **arg, Da
             char *column_name = inDesc->attrs[i].attname.data;
             sprintf(buffer, "d_%s", column_name);
 
-            TupleDescInitEntry(outDesc, (AttrNumber)(inDesc->natts + 2 + i), buffer,
-                               lambda->rettype, lambda->rettypmod, 0);
+            TupleDescInitEntry(outDesc,
+                               (AttrNumber)(inDesc->natts + 2 + i),
+                               buffer,
+                               inDesc->attrs[i].atttypid,
+                               inDesc->attrs[i].atttypmod,
+                               inDesc->attrs[i].attndims);
         }
     }
 
@@ -530,17 +572,18 @@ Datum autodiff_l4_internal(PG_FUNCTION_ARGS)
 
     outDesc = CreateTemplateTupleDesc(inDesc->natts * 2 + 1, false);
 
-    {
+    { // register each tuple-descriptor field with the corresponding field name
         for (int i = 0; i < inDesc->natts; i++)
         {
             TupleDescCopyEntry(outDesc, (AttrNumber)(i + 1), inDesc, (AttrNumber)(i + 1));
         }
 
-        char attrNamesMapped[64];
-        strcpy(attrNamesMapped, "result");
-
-        TupleDescInitEntry(outDesc, (AttrNumber)(inDesc->natts + 1), attrNamesMapped,
-                           lambda->rettype, lambda->rettypmod, 0);
+        TupleDescInitEntry(outDesc,
+                           (AttrNumber)(inDesc->natts + 1),
+                           "result",
+                           lambda->rettype,
+                           lambda->rettypmod,
+                           0);
 
         for (int i = 0; i < inDesc->natts; i++)
         {
@@ -548,8 +591,12 @@ Datum autodiff_l4_internal(PG_FUNCTION_ARGS)
             char *column_name = inDesc->attrs[i].attname.data;
             sprintf(buffer, "d_%s", column_name);
 
-            TupleDescInitEntry(outDesc, (AttrNumber)(inDesc->natts + 2 + i), buffer,
-                               lambda->rettype, lambda->rettypmod, 0);
+            TupleDescInitEntry(outDesc,
+                               (AttrNumber)(inDesc->natts + 2 + i),
+                               buffer,
+                               inDesc->attrs[i].atttypid,
+                               inDesc->attrs[i].atttypmod,
+                               inDesc->attrs[i].attndims);
         }
     }
 
@@ -657,7 +704,6 @@ Datum autodiff_l4(PG_FUNCTION_ARGS)
 {
     ReturnSetInfo *rsinfo = (ReturnSetInfo *)fcinfo->resultinfo;
     LambdaExpr *lambda = PG_GETARG_LAMBDA(1);
-    //int nthreads = PG_GETARG_INT32(4);
     LLVMJitContext *jitContext;
 
     llvm_enter_tmp_context(rsinfo->econtext->ecxt_estate);

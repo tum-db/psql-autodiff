@@ -675,12 +675,7 @@
 { oid => '9022', descr => 'multiply matrices elementwise',
   proname => 'mat_mul_elem', prorettype => '_float8', proargtypes => '_float8 _float8',
   prosrc => 'matrix_elem_mult_external' },
-{ oid => '9024', descr => 'sfunc aggregate average of array',
-  proname => 'mat_avg', prorettype => '_float8', proargtypes => '_float8 _float8',
-  prosrc => 'mat_avg'},
-{ oid => '9025', descr => 'finalfunc aggregate avg',
-  proname => 'mat_avg_final', prorettype => '_float8', proargtypes => '_float8',
-  prosrc => 'mat_avg_final'},
+
 { oid => '9026', descr => 'return index of highest element of array',
   proname => 'index_max', prorettype => 'int4', proargtypes => '_float8',
   prosrc => 'index_max'},
