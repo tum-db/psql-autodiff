@@ -15,6 +15,7 @@ drop table if exists nums_null;
 drop table if exists points;
 drop table if exists pages;
 drop table if exists nums_matrix;
+drop table if exists nums_matrix_test;
 drop table if exists nums_large;
 
 ------------------------------------------create new tables and fill them with usable data----------------------------------------------
@@ -23,6 +24,7 @@ create table nums_numeric(x float not null, y float not null, z float not null);
 create table nums_label(x float not null, y float not null, z float not null);
 create table nums_null(x float, y float);
 create table nums_matrix(x double precision array not null, y double precision array not null, a double precision array not null, b double precision array not null);
+create table nums_matrix_test(x double precision array not null, y double precision array not null);
 create table points(x float not null, y float not null);
 create table pages(src float not null, dst float not null, tmp_x float not null, tmp_y float not null);
 create table nums_large(x1 float not null, y1 float not null, z1 float not null, x2 float not null, y2 float not null, z2 float not null, x3 float not null, y3 float not null, z3 float not null);
@@ -31,6 +33,7 @@ insert into nums select generate_series(1, 100), generate_series(101, 200), gene
 insert into nums_numeric select generate_series(-2, -2), generate_series(5, 5), generate_series(12, 12);
 insert into nums_label select generate_series(2, 2), generate_series(4, 4), generate_series(5, 5);
 insert into nums_matrix values ('{{2,-4}, {6,8}, {2,2}}', '{{8,4,-2, 1}, {4,2,1, 1}}', '{{1,2,3,4,5}, {1,2,3,4,5}, {1,2,3,4,5}, {1,2,3,4,5}}', '{{1,2}, {1,2}, {1,2}, {1,2}, {1,2}}');
+insert into nums_matrix_test values ('{{2,-4}, {6,8}, {2,2}}', '{{2,-4}, {6,8}, {2,2}}');
 insert into nums_large select generate_series(1,10000), generate_series(10001,20000), generate_series(20001,30000), generate_series(1,10000), generate_series(10001,20000), generate_series(20001,30000), generate_series(1,10000), generate_series(10001,20000), generate_series(20001,30000);
 
 insert into nums_null select generate_series(1, 1), generate_series(2, 2);
@@ -124,10 +127,10 @@ language C STRICT;
 -- as '/home/clemens/masterarbeit/psql-autodiff/src/ext/gradient_desc_m_ext.so','gradient_descent_m_l1_2'
 -- language C STRICT;
 
-create or replace function gradient_descent_m_l3(lambdatable, "lambda", int, int, int, float)
-returns setof record
-as '/home/clemens/masterarbeit/psql-autodiff/src/ext/gradient_desc_m_ext.so','gradient_descent_m_l3'
-language C STRICT;
+-- create or replace function gradient_descent_m_l3(lambdatable, "lambda", int, int, int, float)
+-- returns setof record
+-- as '/home/clemens/masterarbeit/psql-autodiff/src/ext/gradient_desc_m_ext.so','gradient_descent_m_l3'
+-- language C STRICT;
 
 -- create or replace function gradient_descent_m_l4(lambdatable, "lambda", int, int, int, float)
 -- returns setof record
@@ -169,13 +172,14 @@ language C STRICT;
 -- select * from pagerank((select * from pages), (lambda(src)(src.src)), (lambda(dst)(dst.dst)), 0.85, 0.00001, 100, 100) limit 10;
 -- select * from pagerank_threads((select * from pages), (lambda(src)(src.src)), (lambda(dst)(dst.dst)), 0.85, 0.00001, 100, 100) limit 10;
 
--- set jit='off';
--- select * from autodiff_l1_2((select x, y from nums_numeric), (lambda(a)(sin(a.x * a.y) + a.x * a.y))) limit 10;
--- set jit='on';
--- select * from autodiff_l1_2((select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
--- select * from autodiff_l3(  (select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
--- select * from autodiff_l4(  (select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
+set jit='off';
+select * from autodiff_l1_2((select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
+set jit='on';
+select * from autodiff_l1_2((select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
+select * from autodiff_l3(  (select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
+select * from autodiff_l4(  (select x, y, z from nums_numeric), (lambda(a)(relu(a.x) + relu(a.y) + relu(a.z)))) limit 10;
 
+select mat_add(x, y), x, y from nums_matrix_test; 
 -- set jit='off';
 -- select * from nums_matrix;
 -- select * from autodiff_l1_2((select x, y from nums_matrix), (lambda(a)(a.x))) limit 10; 
@@ -248,31 +252,35 @@ language C STRICT;
 ----------------------------------------Recursive Tables------------------------------------------------------
 -- set jit='off';
 -- drop table if exists data;
--- create table data (x1 float, x2 float, y float);
--- insert into data (select *,0.5+0.8*x1+0.8*x2 from (select random() x1, random() x2 from generate_series(1, 10000)) as my_a);
+-- create table data (x1 float, y float);
+-- insert into data (select *,0.5+0.8*x1 from (select random() x1 from generate_series(1, 10)) as my_a);
 
 -- drop table if exists gd;
--- create table gd(id integer, a1 float, a2 float, b float);
--- insert into gd values (1, 1::float, 1::float, 1::float);
+-- create table gd(id integer, a1 float, b float);
+-- insert into gd values (1, 1::float, 1::float);
 
-
+-- select (id + 1)::integer as id,
+--            (a1- 0.0025 * avg(d_a1))::float as a1,
+--            (b - 0.0025 * avg(d_b))::float as b
+-- from autodiff_l1_2((select * from gd, (select * from data) as my_a_2 where id < 5), 
+--                    (lambda(x)((x.a1*x.x1 + x.b-x.y)^2)))
+-- group by id, a1, b;
 
 -- set jit='off';
 
--- with recursive gd(id, a1, a2, b) as (
--- 	select 1, 1::float, 1::float, 1::float
+-- with recursive gd(id, a1, b) as (
+-- 	select 1, 1::float, 1::float
 -- union all
 --     select (id + 1)::integer as id,
---            (a1- 0.0025 * avg(d_a1))::float as a1,
---            (a2- 0.0025 * avg(d_a2))::float as a2,
---            (b - 0.0025 * avg(d_b))::float as b
---     from autodiff_l1_2((select * from gd, (select * from data) as my_a_2 where id < 200), 
---                        (lambda(x)((x.a1*x.x1 + x.a2*x.x2 + x.b-x.y)^2)))
---     group by id, a1, a2, b
+--            (a1- 0.01 * avg(d_a1))::float as a1,
+--            (b - 0.01 * avg(d_b))::float as b
+--     from autodiff_l1_2((select * from gd, (select * from data) as my_a_2 where id < 50), 
+--                        (lambda(x)((x.a1*x.x1 + x.b-x.y)^2)))
+--     group by id, a1, b
 -- )
--- select * from gd where id=200;
+-- select * from gd where id=50;
 
--- drop table if exists nn_table;
+-- drop table if exists gd_test;
 -- drop table if exists iris;
 -- drop table if exists iris3;
 
@@ -283,8 +291,8 @@ language C STRICT;
 -- insert into iris3 (select array[[sepal_length/10, sepal_width/10, petal_length/10, petal_width/10]] as img, 
 --                     array[(array_fill(0::float, array[species]) || 1::float ) || array_fill(0::float, array[2-species])] as one_hot from iris limit 150);
 
--- create table nn_table(w_xh float array not null, w_ho float array not null);
--- insert into nn_table select
+-- create table gd_test(id integer, w_xh float array not null, w_ho float array not null);
+-- insert into gd_test select 1,
 --     (select array_agg(array_agg) from generate_series(1,4), (select array_agg(random()) from generate_series(1,20)) as foo),
 --     (select array_agg(array_agg) from generate_series(1,20), (select array_agg(random()) from generate_series(1,3)) as foo);
 
@@ -301,7 +309,7 @@ language C STRICT;
 --     select id + 1,
 --            w_xh - 0.05 * d_w_xh, 
 --            w_ho - 0.05 * d_w_ho
---     from autodiff_l1_2((select * from (select * from gd where id < 5) as alias_1, (select * from iris3 tablesample bernoulli (25) order by random() limit 1) as alias_2), 
+--     from autodiff_l1_2((select * from (select * from gd where id < 5) as alias_1, (select * from iris3 order by random() limit 1) as alias_2), 
 --                        (lambda(x)(softmax_cce(tanh_m(x.img**x.w_xh)**x.w_ho, x.one_hot))))
 -- ) select id from gd;
 -- ), test as (select id, correct, count(*) as count 
@@ -416,7 +424,7 @@ language C STRICT;
 
 -- drop table if exists gd;
 -- create table gd(a1 float, a2 float,a3 float, a4 float, a5 float, a6 float, a7 float, a8 float, b float);
--- insert into gd values (10::float, 10::float, 10::float, 10::float, 10::float, 10::float, 10::float, 10::float, 10::float);
+-- insert into gd values (1::float, 1::float, 10::float, 10::float, 10::float, 10::float, 10::float, 10::float, 10::float);
 
 -- set jit='off';
 -- -- --params for gd: 1.Number of iterations/epochs  2.number of attributes  3.batch_size(-1 means whole data_set as one batch)  4.learning_rate
@@ -506,7 +514,7 @@ language C STRICT;
 --     select w_xh, w_ho
 --     from autodiff_l1_2((select * from iris3 tablesample bernoulli (1), nn_table), (lambda(x)(softmax_cce(tanh_m(x.img**x.w_xh)**x.w_ho, x.one_hot))))
 -- ), test as (select id, correct, count(*) as count from (select id, index_max(softmax(tanh_m(img**w_xh)**w_ho))=index_max(one_hot) as correct from iris3, gd) as foo group by id, correct)
--- select id, count*1.0/(select sum(count) from test t2 where t1.id=t2.id) from test t1 where correct=true order by id; 
+-- select id, count*1.0/(select sum(count) from test t2 where t1.id=t2.id) from test t1 where correct=true order bexpressiontreey id; 
 ----------------------------------------------------------------------------------------------------------------------
 
 

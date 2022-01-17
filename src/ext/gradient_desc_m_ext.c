@@ -17,6 +17,7 @@
 #include <math.h>
 #include <pthread.h>
 #include "miscadmin.h"
+#include <unistd.h>
 
 extern TupleDesc gradient_descent_m_record_type(List *args)
 {
@@ -35,11 +36,11 @@ extern TupleDesc gradient_descent_m_record_type(List *args)
 }
 
 PG_MODULE_MAGIC;
-PG_FUNCTION_INFO_V1_RECTYPE(gradient_descent_m_l1_2, gradient_descent_m_record_type);
+// PG_FUNCTION_INFO_V1_RECTYPE(gradient_descent_m_l1_2, gradient_descent_m_record_type);
 PG_FUNCTION_INFO_V1_RECTYPE(gradient_descent_m_l3, gradient_descent_m_record_type);
-PG_FUNCTION_INFO_V1_RECTYPE(gradient_descent_m_l4, gradient_descent_m_record_type);
+// PG_FUNCTION_INFO_V1_RECTYPE(gradient_descent_m_l4, gradient_descent_m_record_type);
 
-Datum gradient_descent_m_internal_l1_2(PG_FUNCTION_ARGS)
+/*Datum gradient_descent_m_internal_l1_2(PG_FUNCTION_ARGS)
 {
     float8 learning_rate = PG_GETARG_FLOAT8(5); // learning rate for gradient desc
     int batch_size = PG_GETARG_INT32(4);        // amount of tuples to be loaded during grad_desc
@@ -178,7 +179,7 @@ Datum gradient_descent_m_internal_l1_2(PG_FUNCTION_ARGS)
 
     MemoryContextSwitchTo(oldcontext);
     return (Datum)0;
-}
+}*/
 
 Datum gradient_descent_m_internal_l3(PG_FUNCTION_ARGS, Datum (*derivefunc)(Datum **arg, Datum *derivatives))
 {
@@ -230,7 +231,7 @@ Datum gradient_descent_m_internal_l3(PG_FUNCTION_ARGS, Datum (*derivefunc)(Datum
         TupleDescCopyEntry(outDesc, (AttrNumber)(i + 1), inDesc, (AttrNumber)(i + 1));
     }
 
-    HeapTuple tuple;
+    // HeapTuple tuple;
 
     bool *oldIsNull = (bool *)palloc_extended(inDesc->natts * sizeof(bool), (MCXT_ALLOC_ZERO));
     Datum *oldVal = (Datum *)palloc_extended(inDesc->natts * sizeof(Datum), (MCXT_ALLOC_ZERO));
@@ -319,9 +320,9 @@ Datum gradient_descent_m_internal_l3(PG_FUNCTION_ARGS, Datum (*derivefunc)(Datum
         }
         // printf("Grad_desc_l3_internal mat_apply gradients for this iteration done\n");
     }
-    MemoryContextResetAndDeleteChildren(per_expr_eval);
+    // MemoryContextResetAndDeleteChildren(per_expr_eval);
     MemoryContextSwitchTo(per_query_ctx);
-    printf("Grad_desc_l3_internal switched back to MCTX per query\n");
+    // printf("Grad_desc_l3_internal switched back to MCTX per query\n");
 
     for (int i = 0; i < num_atts; i++)
     {
@@ -329,30 +330,33 @@ Datum gradient_descent_m_internal_l3(PG_FUNCTION_ARGS, Datum (*derivefunc)(Datum
         replIsNull[i] = false;
     }
 
-    printf("Grad_desc_l3_internal before last heap_form\n");
+    // printf("Grad_desc_l3_internal before last heap_form\n");
 
-    tuple = heap_form_tuple(outDesc, replVal, replIsNull);
+    HeapTuple tuple = heap_form_tuple(outDesc, replVal, replIsNull);
 
-    printf("Grad_desc_l3_internal heap_form worked\n");
+    // printf("Grad_desc_l3_internal heap_form worked\n");
 
     tuplestore_puttuple(tsOut, tuple);
 
-    printf("Grad_desc_l3_internal tupleStore put tuple\n");
+    // printf("Grad_desc_l3_internal tupleStore put tuple\n");
 
     rsinfo->returnMode = SFRM_Materialize;
     rsinfo->setResult = tsOut;
     rsinfo->setDesc = outDesc;
 
-    printf("Grad_desc_l3_internal rsinfo was filled\n");
+    // printf("Grad_desc_l3_internal rsinfo was filled\n");
 
     MemoryContextSwitchTo(oldcontext);
 
     printf("Grad_desc_l3_internal MCTX was switched to old\n");
 
+    printf("getpid(): %ld\n", (long) getpid());
+    printf("getppid(): %ld\n", (long) getppid());
+
     return (Datum)0;
 }
 
-Datum gradient_descent_m_internal_l4(PG_FUNCTION_ARGS)
+/*Datum gradient_descent_m_internal_l4(PG_FUNCTION_ARGS)
 {
     float8 learning_rate = PG_GETARG_FLOAT8(5); // learning rate for gradient desc
     int batch_size = PG_GETARG_INT32(4);        // amount of tuples to be loaded during grad_desc
@@ -497,7 +501,7 @@ Datum gradient_descent_m_l1_2(PG_FUNCTION_ARGS)
     llvm_leave_tmp_context(rsinfo->econtext->ecxt_estate);
 
     return gradient_descent_m_internal_l1_2(fcinfo);
-}
+}*/
 
 Datum gradient_descent_m_l3(PG_FUNCTION_ARGS)
 {
@@ -520,22 +524,22 @@ Datum gradient_descent_m_l3(PG_FUNCTION_ARGS)
     return gradient_descent_m_internal_l3(fcinfo, compiled_func);
 }
 
-Datum gradient_descent_m_l4(PG_FUNCTION_ARGS)
-{
-    ReturnSetInfo *rsinfo = (ReturnSetInfo *)fcinfo->resultinfo;
-    LambdaExpr *lambda = PG_GETARG_LAMBDA(1);
+// Datum gradient_descent_m_l4(PG_FUNCTION_ARGS)
+// {
+//     ReturnSetInfo *rsinfo = (ReturnSetInfo *)fcinfo->resultinfo;
+//     LambdaExpr *lambda = PG_GETARG_LAMBDA(1);
 
-    llvm_enter_tmp_context(rsinfo->econtext->ecxt_estate);
-    LLVMJitContext *jitContext = (LLVMJitContext *)(rsinfo->econtext->ecxt_estate->es_jit);
+//     llvm_enter_tmp_context(rsinfo->econtext->ecxt_estate);
+//     LLVMJitContext *jitContext = (LLVMJitContext *)(rsinfo->econtext->ecxt_estate->es_jit);
 
-    ExecInitLambdaExpr((Node *)lambda, true, true);
-    Datum (*compiled_func)(FunctionCallInfo);
-    compiled_func = llvm_prepare_lambda_tablefunc(jitContext, "ext/gradient_desc_m_ext.bc", "gradient_descent_m_internal_l4", 1);
+//     ExecInitLambdaExpr((Node *)lambda, true, true);
+//     Datum (*compiled_func)(FunctionCallInfo);
+//     compiled_func = llvm_prepare_lambda_tablefunc(jitContext, "ext/gradient_desc_m_ext.bc", "gradient_descent_m_internal_l4", 1);
 
-    llvm_leave_tmp_context(rsinfo->econtext->ecxt_estate);
+//     llvm_leave_tmp_context(rsinfo->econtext->ecxt_estate);
 
-    return compiled_func(fcinfo);
-}
+//     return compiled_func(fcinfo);
+// }
 
 /*
 int tuple_counter = 0; // number of already calculated samples in batch

@@ -275,7 +275,6 @@ void ExecCheckLambdaForMatrix(ExprState *expression)
  * It is a running tally of which table-input, for the lambda-expression, start at which index in the derivatives array.
  */
 int* ExecGenerateIndexArray(LambdaExpr *lambda) {
-	//printf("The length of the lambda-input list: %d", list_length(lambda->args));
 	int numTables = list_length(lambda->args);
 	int *indexArray = palloc0(numTables * sizeof(int));
 	int runningTally = 0;
@@ -295,13 +294,11 @@ int* ExecGenerateIndexArray(LambdaExpr *lambda) {
  */
 int ExecGetLambdaDerivativesLength(LambdaExpr *expr) {
 	int numTables = list_length(expr->args);
-	// printf("number of tables: %d\n", numTables);
 	int runningTally = 0;
 	for (int i = 0; i < numTables; i++)
 	{
 		TupleDesc inDesc = (TupleDesc)list_nth(expr->argtypes, i);
 		runningTally += inDesc->natts;
-		// printf("loop %d -> number of attributes currently: %d\n", i, runningTally);
 	}
 	return runningTally;
 }
@@ -357,13 +354,7 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 		int fieldNum = (state->indexArray[state->steps[fetchIndex - 1].d.param.paramid - 1]) + 
 				(state->steps[fetchIndex].d.fieldselect.fieldnum - 1);
 		if (state->lambdaContainsMatrix) {
-			// printf("FieldSelect: derivatives:\n");
-			// matrixPrint(DatumGetArrayTypeP(derivatives[fieldNum]));
-			// printf("FieldSelect: seed:\n");
-			// matrixPrint(DatumGetArrayTypeP(seed));
 			derivatives[fieldNum] = matrix_add_inplace(derivatives[fieldNum], seed);
-			// printf("FieldSelect: derivatives(afterwards):\n");
-			// matrixPrint(DatumGetArrayTypeP(derivatives[fieldNum]));
 		} else {
 			derivatives[fieldNum] = Float8GetDatum(DatumGetFloat8(derivatives[fieldNum]) + DatumGetFloat8(seed));
 		}
@@ -607,17 +598,6 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 			Datum newSeedX = matrix_mul_internal(seed, softmax_cce_derive(x, y), false, false); 
 			Datum newSeedY = PointerGetDatum(createScalar(0.0)); //derivative to one-hot is not important, but needs derivation nonetheless
 
-			// printf("Softmax_CCE: seed: \n");
-			// matrixPrint(DatumGetArrayTypeP(seed));
-			// printf("Softmax_CCE: x:\n");
-			// matrixPrint(DatumGetArrayTypeP(x));
-			// printf("Softmax_CCE: y:\n");
-			// matrixPrint(DatumGetArrayTypeP(y));
-			// printf("Softmax_CCE: newSeedX:\n");
-			// matrixPrint(DatumGetArrayTypeP(newSeedX));
-			// printf("Softmax_CCE: newSeedY:\n");
-			// matrixPrint(DatumGetArrayTypeP(newSeedY));
-
 			int stepIndexAfterY = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedY, derivatives);
 			int stepIndexAfterX = ExecLambdaDeriveSubtree(state, stepIndexAfterY, newSeedX, derivatives);
 			resultFetchIndex = stepIndexAfterX;
@@ -683,17 +663,6 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 			Datum newSeedX = matrix_mul_internal(seed, y, false, true);
 			Datum newSeedY = matrix_mul_internal(x, seed, true, false);
 
-			// printf("MatMul: seed: \n");
-			// matrixPrint(DatumGetArrayTypeP(seed));
-			// printf("MatMul: x:\n");
-			// matrixPrint(DatumGetArrayTypeP(x));
-			// printf("MatMul: y:\n");
-			// matrixPrint(DatumGetArrayTypeP(y));
-			// printf("MatMul: newSeedX:\n");
-			// matrixPrint(DatumGetArrayTypeP(newSeedX));
-			// printf("MatMul: newSeedY:\n");
-			// matrixPrint(DatumGetArrayTypeP(newSeedY));
-
 			int startingPointForY = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedY, derivatives);
 			int stepIndexAfterX = ExecLambdaDeriveSubtree(state, startingPointForY, newSeedX, derivatives);
 			resultFetchIndex = stepIndexAfterX;
@@ -722,13 +691,6 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 			Datum x = state->steps[fetchIndex].d.func.fcinfo_data->arg[0];
 			Datum newSeedX = matrix_elem_mult(seed, tanh_m_derive(x));
 
-			// printf("Tanh_M: seed: \n");
-			// matrixPrint(DatumGetArrayTypeP(seed));
-			// printf("Tanh_M: X: \n");
-			// matrixPrint(DatumGetArrayTypeP(x));
-			// printf("Tanh_M: NewSeedX: \n");
-			// matrixPrint(DatumGetArrayTypeP(newSeedX));
-
 			int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
 			resultFetchIndex = stepsAfterSubtree;
 			break;
@@ -740,6 +702,13 @@ ExecLambdaDeriveSubtree(ExprState *state, int fetchIndex, Datum seed, Datum *der
 			
 			int stepsAfterSubtree = ExecLambdaDeriveSubtree(state, fetchIndex - 1, newSeedX, derivatives);
 			resultFetchIndex = stepsAfterSubtree;
+			break;
+		}
+		case 9005: /* array float8 matrix addition */
+		{
+			int startingPointForY = ExecLambdaDeriveSubtree(state, fetchIndex - 1, seed, derivatives);
+			int stepIndexAfterX = ExecLambdaDeriveSubtree(state, startingPointForY, seed, derivatives);
+			resultFetchIndex = stepIndexAfterX;
 			break;
 		}
 		default:

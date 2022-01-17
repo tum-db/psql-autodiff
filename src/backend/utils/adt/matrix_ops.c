@@ -35,7 +35,6 @@
  */
 Datum matrix_mul(PG_FUNCTION_ARGS)
 {
-    // printf("begin of matrix_mul_external\n");
     //   The formal PostgreSQL array objects:
     ArrayType *a1, *a2, *ret;
 
@@ -77,7 +76,6 @@ Datum matrix_mul(PG_FUNCTION_ARGS)
         {
             data[i] *= DatumGetFloat8(((Datum *)ARR_DATA_PTR(a1))[0]);
         }
-        // printf("MatA is scalar, MatB has dimensions: [%d, %d]\n", ARR_DIMS(ret)[0], ARR_DIMS(ret)[1]);
         PG_RETURN_ARRAYTYPE_P(ret);
     }
     if (isScalar(a2))
@@ -89,7 +87,6 @@ Datum matrix_mul(PG_FUNCTION_ARGS)
         {
             data[i] *= DatumGetFloat8(((Datum *)ARR_DATA_PTR(a2))[0]);
         }
-        // printf("MatB is scalar, MatA has dimensions: [%d, %d]\n", ARR_DIMS(ret)[0], ARR_DIMS(ret)[1]);
         PG_RETURN_ARRAYTYPE_P(ret);
     }
 
@@ -142,11 +139,9 @@ Datum matrix_mul(PG_FUNCTION_ARGS)
             for (int k = 0; k < dimc; k++)
             {
                 ps[MAT_2D(i, k, dimc)] += ps1[MAT_2D(i, j, dimb)] * ps2[MAT_2D(j, k, dimc)];
-                // ps[MAT_2D(i, k, dimc)] += ps1[((transposeA) ? (MAT_2D(j, i, dima)) : (MAT_2D(i, j, dimb)))] * ps2[((transposeB) ? (MAT_2D(k, j, dimb)) : (MAT_2D(j, k, dimc)))];
             }
         }
     }
-    // printf("end of matrix_mul_external\n");
     PG_RETURN_ARRAYTYPE_P(ret);
 }
 
@@ -157,7 +152,6 @@ Datum matrix_mul(PG_FUNCTION_ARGS)
  */
 Datum matrix_mul_internal(Datum MatA, Datum MatB, const bool transposeA, const bool transposeB)
 {
-    // printf("begin of matrix_mul_internal\n");
     //  The formal PostgreSQL array objects:
     ArrayType *a1, *a2, *ret;
 
@@ -176,14 +170,6 @@ Datum matrix_mul_internal(Datum MatA, Datum MatB, const bool transposeA, const b
     // Extract the PostgreSQL arrays from the parameters passed to this function call.
     a1 = DatumGetArrayTypeP((transposeA) ? (matrix_transpose_internal(MatA)) : (MatA));
     a2 = DatumGetArrayTypeP((transposeB) ? (matrix_transpose_internal(MatB)) : (MatB));
-
-    // {
-    //     printf("------------------------------------------------------------\n");
-    //     printf("matrix_mul_internal: a1:\n");
-    //     matrixPrint(a1);
-    //     printf("matrix_mul_internal: a2:\n");
-    //     matrixPrint(a2);
-    // }
 
     int *dim1 = ARR_DIMS(a1);
     int *dim2 = ARR_DIMS(a2);
@@ -207,12 +193,6 @@ Datum matrix_mul_internal(Datum MatA, Datum MatB, const bool transposeA, const b
         {
             data[i] *= DatumGetFloat8(((Datum *)ARR_DATA_PTR(a1))[0]);
         }
-        // printf("MatA is scalar, MatB has dimensions: [%d, %d]\n", ARR_DIMS(ret)[0], ARR_DIMS(ret)[1]);
-        //  {
-        //      printf("mat_mul_internal: ret(end):\n");
-        //      matrixPrint(ret);
-        //      printf("------------------------------------------------------------\n\n\n\n");
-        //  }
         PG_RETURN_ARRAYTYPE_P(ret);
     }
     if (isScalar(a2))
@@ -224,12 +204,6 @@ Datum matrix_mul_internal(Datum MatA, Datum MatB, const bool transposeA, const b
         {
             data[i] *= DatumGetFloat8(((Datum *)ARR_DATA_PTR(a2))[0]);
         }
-        // printf("MatB is scalar, MatA has dimensions: [%d, %d]\n", ARR_DIMS(ret)[0], ARR_DIMS(ret)[1]);
-        //  {
-        //      printf("mat_mul_internal: ret(end):\n");
-        //      matrixPrint(ret);
-        //      printf("------------------------------------------------------------\n\n\n\n");
-        //  }
         PG_RETURN_ARRAYTYPE_P(ret);
     }
 
@@ -270,11 +244,6 @@ Datum matrix_mul_internal(Datum MatA, Datum MatB, const bool transposeA, const b
 
     ret = initResult(ndim_res, dims, lbs);
 
-    // {
-    //     printf("mat_mul_internal: ret(init):\n");
-    //     matrixPrint(ret);
-    // }
-
     float8 *ps1 = (float8 *)ARR_DATA_PTR(a1);
     float8 *ps2 = (float8 *)ARR_DATA_PTR(a2);
     float8 *ps = (float8 *)ARR_DATA_PTR(ret);
@@ -288,19 +257,10 @@ Datum matrix_mul_internal(Datum MatA, Datum MatB, const bool transposeA, const b
             for (int j = 0; j < dimb; j++)
             {
                 tmp += ps1[MAT_2D(i, j, dimb)] * ps2[MAT_2D(j, k, dimc)];
-                // printf("mat_mul value new: %.4lf\n", tmp);
-                // printf("mat_mul_internal: value of (%d,%d) -> %lf\n", i, k, ps[MAT_2D(i, k, dimc)]);
-                // ps[MAT_2D(i, k, dimc)] += ps1[((transposeA) ? (MAT_2D(j, i, dima)) : (MAT_2D(i, j, dimb)))] * ps2[((transposeB) ? (MAT_2D(k, j, dimb)) : (MAT_2D(j, k, dimc)))];
             }
             ps[MAT_2D(i, k, dimc)] = tmp;
         }
     }
-    // printf("end of matrix_mul_internal\n");
-    //  {
-    //      printf("mat_mul_internal: ret(end):\n");
-    //      matrixPrint(ret);
-    //      printf("------------------------------------------------------------\n\n\n\n");
-    //  }
     PG_RETURN_ARRAYTYPE_P(ret);
 }
 
@@ -309,7 +269,6 @@ Datum matrix_mul_internal(Datum MatA, Datum MatB, const bool transposeA, const b
  */
 Datum matrix_add_inplace(Datum MatA, Datum MatB)
 {
-    // printf("begin of matrix_add_inplace\n");
     //  The formal PostgreSQL array objects:
     ArrayType *a1, *a2;
 
@@ -328,15 +287,6 @@ Datum matrix_add_inplace(Datum MatA, Datum MatB)
     a1 = DatumGetArrayTypeP(MatA);
     a2 = DatumGetArrayTypeP(MatB);
 
-    // {
-    //     printf("------------------------------------------------------------\n");
-    //     printf("Array add inplace!\n");
-    //     printf("Array A1(most likely current derivative)\n");
-    //     matrixPrint(a1);
-    //     printf("Array A2(most likely seed)\n");
-    //     matrixPrint(a2);
-    // }
-
     length1 = ArrayGetNItems(ARR_NDIM(a1), ARR_DIMS(a1));
     length2 = ArrayGetNItems(ARR_NDIM(a2), ARR_DIMS(a2));
 
@@ -350,15 +300,6 @@ Datum matrix_add_inplace(Datum MatA, Datum MatB)
         {
             data[i] = Float8GetDatum(DatumGetFloat8(data[i]) + DatumGetFloat8(elem));
         }
-        // printf("end of matrix_add_inplace\n");
-        //  {
-        //      printf("Array add inplace! END\n");
-        //      printf("Array A1(most likely current derivative)\n");
-        //      matrixPrint(a1);
-        //      printf("Array A2(most likely seed)\n");
-        //      matrixPrint(a2);
-        //      printf("------------------------------------------------------------\n\n\n");
-        //  }
         PG_RETURN_ARRAYTYPE_P(a1);
     }
     if (isScalar(a2))
@@ -370,15 +311,6 @@ Datum matrix_add_inplace(Datum MatA, Datum MatB)
         {
             data[i] = Float8GetDatum(DatumGetFloat8(data[i]) + DatumGetFloat8(elem));
         }
-        // printf("end of matrix_add_inplace\n");
-        //  {
-        //      printf("Array add inplace! END\n");
-        //      printf("Array A1(most likely current derivative)\n");
-        //      matrixPrint(a1);
-        //      printf("Array A2(most likely seed)\n");
-        //      matrixPrint(a2);
-        //      printf("------------------------------------------------------------\n\n\n");
-        //  }
         PG_RETURN_ARRAYTYPE_P(a1);
     }
 
@@ -404,17 +336,22 @@ Datum matrix_add_inplace(Datum MatA, Datum MatB)
         ps1[pos] = Float8GetDatum(ret);
     }
 
-    // {
-    //     printf("Array add inplace! END\n");
-    //     printf("Array A1(most likely current derivative)\n");
-    //     matrixPrint(a1);
-    //     printf("Array A2(most likely seed)\n");
-    //     matrixPrint(a2);
-    //     printf("------------------------------------------------------------\n\n\n");
-    // }
-
-    // printf("end of matrix_add_inplace\n");
     PG_RETURN_ARRAYTYPE_P(a1);
+}
+
+/*
+ * External function call to add two matricies
+ */
+Datum matrix_add(PG_FUNCTION_ARGS) {
+    return matrix_add_inplace(PointerGetDatum(copyArray(PG_GETARG_DATUM(0))), PG_GETARG_DATUM(1));
+}
+
+/*
+ * Internal function call to add two matricies(not inplace)
+ */
+Datum matrix_add_internal(Datum matA, Datum matB)
+{
+    return matrix_add_inplace(PointerGetDatum(copyArray(matA)), matB);
 }
 
 /*
@@ -430,7 +367,6 @@ Datum matrix_elem_mult_external(PG_FUNCTION_ARGS)
  */
 Datum matrix_elem_mult(Datum matA, Datum matB)
 {
-    // printf("begin of matrix_elem_mult\n");
     ArrayType *a, *b, *ret;
     int ndims, length1, length2;
     int *dims;
@@ -461,7 +397,6 @@ Datum matrix_elem_mult(Datum matA, Datum matB)
         {
             data[i] = Float8GetDatum(DatumGetFloat8(elem) * DatumGetFloat8(data[i]));
         }
-        // printf("end of matrix_elem_mult\n");
         PG_RETURN_ARRAYTYPE_P(ret);
     }
     else if (isScalar(b))
@@ -475,7 +410,6 @@ Datum matrix_elem_mult(Datum matA, Datum matB)
         {
             data[i] = Float8GetDatum(DatumGetFloat8(elem) * DatumGetFloat8(data[i]));
         }
-        // printf("end of matrix_elem_mult\n");
         PG_RETURN_ARRAYTYPE_P(ret);
     }
 
@@ -504,7 +438,6 @@ Datum matrix_elem_mult(Datum matA, Datum matB)
     {
         ret_data[i] = Float8GetDatum(DatumGetFloat8(a_data[i]) * DatumGetFloat8(b_data[i]));
     }
-    // printf("end of matrix_elem_mult\n");
     PG_RETURN_ARRAYTYPE_P(ret);
 }
 
@@ -513,7 +446,6 @@ Datum matrix_elem_mult(Datum matA, Datum matB)
  */
 Datum mat_sub_mm(PG_FUNCTION_ARGS)
 {
-    // printf("begin of mat_sub_mm!\n");
     ArrayType *ret, *a1, *a2;
     a1 = PG_GETARG_ARRAYTYPE_P(0);
     a2 = PG_GETARG_ARRAYTYPE_P(1);
@@ -542,11 +474,6 @@ Datum mat_sub_mm(PG_FUNCTION_ARGS)
         retData[i] = Float8GetDatum(DatumGetFloat8(a1Data[i]) - DatumGetFloat8(a2Data[i]));
     }
 
-    // {
-    //     printf("mat_sub_mm: \n");
-    //     matrixPrint(ret);
-    // }
-
     PG_RETURN_ARRAYTYPE_P(ret);
 }
 
@@ -555,7 +482,6 @@ Datum mat_sub_mm(PG_FUNCTION_ARGS)
  */
 Datum mat_sub_ms(PG_FUNCTION_ARGS)
 {
-    // printf("begin of mat_sub_ms!\n");
     ArrayType *ret, *a1;
     float8 scalar;
     a1 = PG_GETARG_ARRAYTYPE_P(0);
@@ -578,7 +504,6 @@ Datum mat_sub_ms(PG_FUNCTION_ARGS)
  */
 Datum mat_sub_sm(PG_FUNCTION_ARGS)
 {
-    // printf("begin of mat_sub_sm!\n");
     ArrayType *ret, *a1;
     float8 scalar;
     a1 = PG_GETARG_ARRAYTYPE_P(1);
@@ -601,7 +526,6 @@ Datum mat_sub_sm(PG_FUNCTION_ARGS)
  */
 Datum mat_mul_sm(PG_FUNCTION_ARGS)
 {
-    // printf("begin of mat_mul_sm!\n");
     ArrayType *ret, *a1;
     float8 scalar;
     a1 = PG_GETARG_ARRAYTYPE_P(1);
@@ -632,7 +556,6 @@ Datum mat_transpose_external(PG_FUNCTION_ARGS)
  */
 Datum matrix_transpose_internal(Datum MatA)
 {
-    // printf("begin of matrix_transpose_internal\n");
     //  The formal PostgreSQL array objects:
     ArrayType *ret, *org;
     if (DatumGetPointer(MatA) == NULL)
@@ -683,79 +606,8 @@ Datum matrix_transpose_internal(Datum MatA)
             B[MAT_2D(j, i, dims[1])] = A[MAT_2D(i, j, dims[0])];
         }
     }
-    // printf("end of matrix_transpose_internal\n");
     PG_RETURN_ARRAYTYPE_P(ret);
 }
-
-// /*
-//  * Aggregate average array over multiple matrices/vectors of same dimension
-//  */
-// Datum mat_avg(PG_FUNCTION_ARGS)
-// {
-//     //printf("mat_avg begin!\n");
-//     if (AggCheckCallContext(fcinfo, NULL))
-//     {
-//         ArrayType *state_array, *new_val;
-
-//         state_array = PG_GETARG_ARRAYTYPE_P(0);
-//         //the data contained in state_array
-//         Datum *state_data = (Datum *)ARR_DATA_PTR(state_array);
-//         new_val = PG_GETARG_ARRAYTYPE_P(1);
-//         // printf("mat_avg begin:\n %p\taddress of state_data[1]\n %p\t address of new_val\n", (void *) state_data[1], (void *) new_val);
-//         // printf("mat_avg begin:\n %p\taddress of state_data[1]\n", (void *) state_data[1]);
-
-//         if (DatumGetFloat8(state_data[0]) == 0.0) //if avg has not been invoked before, copy the current first array
-//         {
-//             state_data[1] = PointerGetDatum(copyArray(PointerGetDatum(new_val)));
-//         }
-//         else //otherwise add new_val on top of the current accumulate
-//         {
-//             state_data[1] = matrix_add_inplace(state_data[1], PointerGetDatum(new_val));
-//             state_data[1] = PointerGetDatum(copyArray(state_data[1]));
-//         }
-//         //increment the counter
-//         state_data[0] = Float8GetDatum(DatumGetFloat8(state_data[0]) + 1.0);
-//         // printf("mat_avg end:\n %p\taddress of state_data[1]\n\n", (void *)state_data[1]);
-//         PG_RETURN_ARRAYTYPE_P(state_array);
-//     }
-//     ereport(ERROR, (errmsg("Aggregate function AVG(float8[]) called in non-aggregate context!")));
-//     PG_RETURN_NULL();
-// }
-
-// {oid = > '9024', descr = > 'sfunc aggregate average of array',
-//  proname = > 'mat_avg', prorettype = > '_float8', proargtypes = > '_float8 _float8',
-//  prosrc = > 'mat_avg'},
-//     {oid = > '9025', descr = > 'finalfunc aggregate avg',
-//      proname = > 'mat_avg_final', prorettype = > '_float8', proargtypes = > '_float8',
-//      prosrc = > 'mat_avg_final'},
-
-// /*
-//  * Aggregate function avg, final function (divide each element by the count of elements)
-//  */
-// Datum mat_avg_final(PG_FUNCTION_ARGS)
-// {
-//     if (AggCheckCallContext(fcinfo, NULL))
-//     {
-//         ArrayType *state_array, *avg_array;
-//         state_array = PG_GETARG_ARRAYTYPE_P(0);
-
-//         Datum *state_data = (Datum *)ARR_DATA_PTR(state_array);
-//         if(DatumGetFloat8(state_data[0]) == 0.0) {
-//             PG_RETURN_NULL();
-//         } else {
-//             avg_array = DatumGetArrayTypeP(state_data[1]);
-//             float8 *avg_data = (float8 *) ARR_DATA_PTR(avg_array);
-// #pragma omp parallel for
-//             for(int i = 0; i < ArrayGetNItems(ARR_NDIM(avg_array), ARR_DIMS(avg_array)); i++) {
-//                 avg_data[i] /= DatumGetFloat8(state_data[0]);
-//             }
-//             PG_RETURN_ARRAYTYPE_P(avg_array);
-//         }
-//     }
-//     ereport(ERROR, (errmsg("Aggregate function AVG-final(float8[]) called in non-aggregate context!")));
-//     PG_RETURN_NULL();
-// }
-
 /*
  * Apply a single gradient update to a matrix(updates inplace)
  * params: weights -> matrix to be updated
@@ -765,7 +617,6 @@ Datum matrix_transpose_internal(Datum MatA)
  */
 Datum mat_apply_gradient(Datum weights, Datum derivatives, float8 learning_rate, int batch_size)
 {
-    // printf("begin of mat_apply_gradient!\n");
     ArrayType *weights_a, *derivatives_a;
     if (DatumGetPointer(weights) == NULL)
     {
@@ -786,12 +637,10 @@ Datum mat_apply_gradient(Datum weights, Datum derivatives, float8 learning_rate,
         {
             data[i] = Float8GetDatum((DatumGetFloat8(data[i]) * learning_rate) / batch_size);
         }
-        // printf("\n\nWARNING: derivatives in apply_grad were scalar!\n\n\n");
         PG_RETURN_ARRAYTYPE_P(weights_a);
     }
     if (isScalar(derivatives_a))
     {
-        // ereport(ERROR, (errmsg("mat_apply_gradient: The to-be-applied gradient cannot be a scalar!")));
         ereport(WARNING, (errmsg("mat_apply_gradient: The to-be-applied gradient cannot be a scalar!")));
         PG_RETURN_ARRAYTYPE_P(weights_a);
     }
@@ -849,7 +698,6 @@ Datum index_max(PG_FUNCTION_ARGS)
  */
 Datum softmax(PG_FUNCTION_ARGS)
 {
-    // printf("begin of mat_softmax (without cross-entropy loss)!\n");
     ArrayType *array;
 
     if (PG_ARGISNULL(0))
@@ -891,7 +739,6 @@ Datum softmax_cce(PG_FUNCTION_ARGS)
  */
 Datum softmax_cce_internal(Datum inputs_in, Datum labels_in)
 {
-    // printf("begin of softmax_cce_internal\n");
     ArrayType *input, *labels;
     if (DatumGetPointer(inputs_in) == NULL)
     {
@@ -906,14 +753,6 @@ Datum softmax_cce_internal(Datum inputs_in, Datum labels_in)
     float8 max, sum = 0.0;
     float8 *data = (float8 *)ARR_DATA_PTR(input);
     float8 *label_data = (float8 *)ARR_DATA_PTR(labels);
-
-    // {
-    //     printf("------------------------------------------------------------");
-    //     printf("Softmax_CCE internal: inputs:\n");
-    //     matrixPrint(input);
-    //     printf("Softmax_CCE internal: labels:\n");
-    //     matrixPrint(labels);
-    // }
 
     int length = ArrayGetNItems(ARR_NDIM(input), ARR_DIMS(input));
     if (ARR_NDIM(input) != ARR_NDIM(labels))
@@ -967,15 +806,7 @@ Datum softmax_cce_internal(Datum inputs_in, Datum labels_in)
     {
         sum += result[i];
     }
-    // printf("end of softmax_cce_internal\n");
 
-    // {
-    //     printf("Softmax_CCE internal: inputs:\n");
-    //     matrixPrint(input);
-    //     printf("Softmax_CCE internal: labels:\n");
-    //     matrixPrint(labels);
-    //     printf("------------------------------------------------------------\n\n\n\n");
-    // }
     PG_RETURN_FLOAT8(sum);
 }
 
@@ -985,7 +816,6 @@ Datum softmax_cce_internal(Datum inputs_in, Datum labels_in)
  */
 Datum softmax_cce_derive(Datum inputs_in, Datum labels_in)
 {
-    // printf("begin of softmax_cce_derive\n");
     ArrayType *input_arr, *labels_arr, *result_arr;
     if (DatumGetPointer(inputs_in) == NULL)
     {
@@ -1000,14 +830,6 @@ Datum softmax_cce_derive(Datum inputs_in, Datum labels_in)
     float8 max, sum = 0.0;
     float8 *input = (float8 *)ARR_DATA_PTR(input_arr);
     float8 *labels = (float8 *)ARR_DATA_PTR(labels_arr);
-
-    // {
-    //     printf("------------------------------------------------------------");
-    //     printf("Softmax_CCE derive: inputs:\n");
-    //     matrixPrint(input_arr);
-    //     printf("Softmax_CCE derive: labels:\n");
-    //     matrixPrint(labels_arr);
-    // }
 
     int length = ArrayGetNItems(ARR_NDIM(input_arr), ARR_DIMS(input_arr));
     if (length != ArrayGetNItems(ARR_NDIM(labels_arr), ARR_DIMS(labels_arr)))
@@ -1050,17 +872,6 @@ Datum softmax_cce_derive(Datum inputs_in, Datum labels_in)
         result[i] = exp(result[i]);
         result[i] -= labels[i];
     }
-    // printf("end of softmax_cce_derive\n");
-
-    // {
-    //     printf("Softmax_CCE derive: inputs:\n");
-    //     matrixPrint(input_arr);
-    //     printf("Softmax_CCE derive: labels:\n");
-    //     matrixPrint(labels_arr);
-    //     printf("Softmax_CCE derive: result:\n");
-    //     matrixPrint(result_arr);
-    //     printf("------------------------------------------------------------\n\n\n\n");
-    // }
 
     PG_RETURN_ARRAYTYPE_P(result_arr);
 }
@@ -1074,7 +885,6 @@ Datum silu_m(PG_FUNCTION_ARGS)
 /* silu_m   -   apply silu to an entire n-dimensional array*/
 Datum silu_m_internal(Datum input)
 {
-    // printf("begin of silu_m_internal\n");
     if (DatumGetPointer(input) == NULL)
     {
         ereport(ERROR, (errmsg("Matrix Silu Internal: Null pointer passed as Matrix Inputs!")));
@@ -1087,14 +897,12 @@ Datum silu_m_internal(Datum input)
         float8 val = (DatumGetFloat8(data[i])) / (1 + exp((-1) * DatumGetFloat8(data[i])));
         data[i] = Float8GetDatum(val);
     }
-    // printf("end of silu_m_internal\n");
     PG_RETURN_ARRAYTYPE_P(ret);
 }
 
 /* silu_m_derive   -   calculate the derivative of element-wise silu*/
 Datum silu_m_derive(Datum input)
 {
-    // printf("begin of silu_m_derive\n");
     if (DatumGetPointer(input) == NULL)
     {
         ereport(ERROR, (errmsg("Matrix Silu Derive: Null pointer passed as Matrix Inputs!")));
@@ -1108,7 +916,6 @@ Datum silu_m_derive(Datum input)
         float8 val = (1 + exp((-1) * x) + x * exp((-1) * x)) / (pow((1 + exp((-1) * x)), 2));
         data[i] = Float8GetDatum(val);
     }
-    // printf("end of silu_m_derive\n");
     PG_RETURN_ARRAYTYPE_P(ret);
 }
 
@@ -1121,7 +928,6 @@ Datum sigmoid_m(PG_FUNCTION_ARGS)
 /* sigmoid_m   -   apply sigmoid to an entire n-dimensional array*/
 Datum sigmoid_m_internal(Datum input)
 {
-    // printf("begin of sigmoid_m_internal\n");
     if (DatumGetPointer(input) == NULL)
     {
         ereport(ERROR, (errmsg("Matrix Sigmoid Internal: Null pointer passed as Matrix Inputs!")));
@@ -1135,14 +941,12 @@ Datum sigmoid_m_internal(Datum input)
         float8 val = (1) / (1 + exp((-1) * x));
         data[i] = Float8GetDatum(val);
     }
-    // printf("end of sigmoid_m_internal\n");
     PG_RETURN_ARRAYTYPE_P(ret);
 }
 
 /* sigmoid_m_derive   -   calculate the derivative of element-wise sigmoid*/
 Datum sigmoid_m_derive(Datum input)
 {
-    // printf("begin of sigmoid_m_derive\n");
     if (DatumGetPointer(input) == NULL)
     {
         ereport(ERROR, (errmsg("Matrix Sigmoid Derive: Null pointer passed as Matrix Inputs!")));
@@ -1157,7 +961,6 @@ Datum sigmoid_m_derive(Datum input)
         float8 val = sig_of_x * (1 - sig_of_x);
         data[i] = Float8GetDatum(val);
     }
-    // printf("end of sigmoid_m_derive\n");
     PG_RETURN_ARRAYTYPE_P(ret);
 }
 
@@ -1170,7 +973,6 @@ Datum tanh_m(PG_FUNCTION_ARGS)
 /* tanh_m   -   apply tanh to an entire n-dimensional array*/
 Datum tanh_m_internal(Datum input)
 {
-    // printf("begin of tanh_m_internal\n");
     if (DatumGetPointer(input) == NULL)
     {
         ereport(ERROR, (errmsg("Matrix tanh Internal: Null pointer passed as Matrix Inputs!")));
@@ -1184,21 +986,13 @@ Datum tanh_m_internal(Datum input)
         float8 val = tanh(x);
         data[i] = Float8GetDatum(val);
     }
-    // {
-    //     printf("---------------------------------\nTAN_H\ninput:\n");
-    //     matrixPrint(DatumGetArrayTypeP(input));
-    //     printf("output:\n");
-    //     matrixPrint(ret);
-    //     printf("---------------------------------\n\n\n");
-    // }
-    // printf("end of tanh_m_internal\n");
+
     PG_RETURN_ARRAYTYPE_P(ret);
 }
 
 /* tanh_m_derive   -   calculate the derivative of element-wise tanh*/
 Datum tanh_m_derive(Datum input)
 {
-    // printf("begin of tanh_m_derive\n");
     if (DatumGetPointer(input) == NULL)
     {
         ereport(ERROR, (errmsg("Matrix tanh derive: Null pointer passed as Matrix Inputs!")));
@@ -1213,7 +1007,6 @@ Datum tanh_m_derive(Datum input)
         float8 val = 1 - tanh_of_x * tanh_of_x;
         data[i] = Float8GetDatum(val);
     }
-    // printf("end of tanh_m_derive\n");
     PG_RETURN_ARRAYTYPE_P(ret);
 }
 
@@ -1226,7 +1019,6 @@ Datum relu_m(PG_FUNCTION_ARGS)
 /* relu_m   -   apply relu to an entire n-dimensional array*/
 Datum relu_m_internal(Datum input)
 {
-    // printf("begin of relu_m_internal\n");
     if (DatumGetPointer(input) == NULL)
     {
         ereport(ERROR, (errmsg("Matrix relu Internal: Null pointer passed as Matrix Inputs!")));
@@ -1240,14 +1032,12 @@ Datum relu_m_internal(Datum input)
         float8 val = Max(x, 0);
         data[i] = Float8GetDatum(val);
     }
-    // printf("end of relu_m_internal\n");
     PG_RETURN_ARRAYTYPE_P(ret);
 }
 
 /* relu_m_derive   -   calculate the derivative of element-wise relu*/
 Datum relu_m_derive(Datum input)
 {
-    // printf("begin of relu_m_derive\n");
     if (DatumGetPointer(input) == NULL)
     {
         ereport(ERROR, (errmsg("Matrix relu derive: Null pointer passed as Matrix Inputs!")));
@@ -1261,7 +1051,6 @@ Datum relu_m_derive(Datum input)
         float8 val = (x > 0) ? (1) : (0);
         data[i] = Float8GetDatum(val);
     }
-    // printf("end of relu_m_derive\n");
     PG_RETURN_ARRAYTYPE_P(ret);
 }
 
@@ -1271,7 +1060,6 @@ Datum relu_m_derive(Datum input)
  */
 ArrayType *initResult(int ndims, int *dims, int *lbs)
 {
-    // printf("begin of initResult\n");
     int nelems = ArrayGetNItems(ndims, dims);
     int32 nbytes = nelems * ALIGNOF_DOUBLE;
     nbytes += ARR_OVERHEAD_NONULLS(ndims);
@@ -1282,7 +1070,6 @@ ArrayType *initResult(int ndims, int *dims, int *lbs)
     ret->elemtype = FLOAT8OID;
     memcpy(ARR_DIMS(ret), dims, ndims * sizeof(int));
     memcpy(ARR_LBOUND(ret), lbs, ndims * sizeof(int));
-    // printf("end of initResult\n");
     return ret;
 }
 
@@ -1291,7 +1078,6 @@ ArrayType *initResult(int ndims, int *dims, int *lbs)
  */
 ArrayType *copyArray(Datum orgArray)
 {
-    // printf("begin of copyArray\n");
     // get size and dimensions from original
     if (DatumGetPointer(orgArray) == NULL)
     {
@@ -1314,7 +1100,6 @@ ArrayType *copyArray(Datum orgArray)
     memcpy(ARR_DIMS(ret), dims, ndims * sizeof(int));
     memcpy(ARR_LBOUND(ret), lbs, ndims * sizeof(int));
     memcpy(ARR_DATA_PTR(ret), ARR_DATA_PTR(original), nbytes);
-    // printf("end of copyArray\n");
     return ret;
 }
 
@@ -1324,7 +1109,6 @@ ArrayType *copyArray(Datum orgArray)
  */
 Datum createArray(int *dims, const float8 value, const bool identityMatrix)
 {
-    // printf("begin of createArray\n");
     ArrayType *ret;
     int lbs[2] = {1, 1};
     ret = initResult(2, dims, lbs);
@@ -1358,7 +1142,6 @@ Datum createArray(int *dims, const float8 value, const bool identityMatrix)
             }
         }
     }
-    // printf("end of createArray\n");
     PG_RETURN_ARRAYTYPE_P(ret);
 }
 
@@ -1468,171 +1251,3 @@ void matrixSetValue(Datum in, float8 value)
         data[i] = value;
     }
 }
-
-// ------------------------------Beginning of old version of mat mul ---------------------------------------
-
-// // printf("begin of matrix_mul_external\n");
-// //  The formal PostgreSQL array objects:
-// ArrayType *a1, *a2, *ret;
-
-// // The array element types:
-// Oid type1, type2;
-
-// // The array element type widths :
-// int16 typeWidth1, typeWidth2;
-
-// // The array element type "is passed by value" flags (not used, should always be true):
-// bool typeByValue1, typeByValue2;
-
-// // The array element type alignment codes (not used):
-// char typeAlignmentCode1, typeAlignmentCode2;
-
-// // The array contents, as PostgreSQL "datum" objects:
-// float8 *retContent;
-
-// // The size of each array:
-// int length1, length2;
-
-// if (PG_ARGISNULL(0))
-// {
-//     ereport(ERROR, (errmsg("Null arrays not accepted")));
-// }
-
-// // Extract the PostgreSQL arrays from the parameters passed to this function call.
-// a1 = PG_GETARG_ARRAYTYPE_P(0);
-// a2 = PG_GETARG_ARRAYTYPE_P(1);
-
-// if (ARR_NDIM(a1) == 0 || ARR_NDIM(a2) == 0)
-// {
-//     PG_RETURN_NULL();
-// }
-
-// if (array_contains_nulls(a1))
-// {
-//     ereport(ERROR, (errmsg("Array left contains null elements")));
-// }
-
-// if (array_contains_nulls(a2))
-// {
-//     ereport(ERROR, (errmsg("Array right contains null elements")));
-// }
-
-// if (ARR_NDIM(a2) != 1 && ARR_NDIM(a2) != 2)
-// {
-//     ereport(ERROR, (errmsg("Array right dimensions wrong!")));
-// }
-
-// if (ARR_NDIM(a1) != 1 && ARR_NDIM(a1) != 2)
-// {
-//     ereport(ERROR, (errmsg("Array left dimensions wrong!")));
-// }
-
-// int *dim1 = ARR_DIMS(a1);
-// int *dim2 = ARR_DIMS(a2);
-
-// if (ARR_NDIM(a1) == 2 && dim1[1] != dim2[0])
-// {
-//     ereport(ERROR, (errmsg("Matrix dimensions do not match!")));
-// }
-// if (ARR_NDIM(a1) == 1 && dim1[0] != dim2[0])
-// {
-//     ereport(ERROR, (errmsg("Matrix dimensions do not match!")));
-// }
-
-// int lbs[2];
-// for (int i = 0; i < 2; i++)
-// {
-//     lbs[i] = 1;
-// }
-
-// // // Determine the array element types.
-// // type1 = ARR_ELEMTYPE(a1);
-// // get_typlenbyvalalign(type1, &typeWidth1, &typeByValue1, &typeAlignmentCode1);
-// // type2 = ARR_ELEMTYPE(a2);
-// // get_typlenbyvalalign(type2, &typeWidth2, &typeByValue2, &typeAlignmentCode2);
-
-// // if (type1 != FLOAT8OID)
-// // {
-// //     ereport(ERROR, (errmsg("Arrays must be SMALLINT, INTEGER, BIGINT, REAL, or DOUBLE PRECISION values")));
-// // }
-// // if (type2 != FLOAT8OID)
-// // {
-// //     ereport(ERROR, (errmsg("Arrays must be SMALLINT, INTEGER, BIGINT, REAL, or DOUBLE PRECISION values")));
-// // }
-
-// int dima = 1;
-// if (ARR_NDIM(a1) == 2)
-// {
-//     dima = dim1[0];
-// }
-
-// int dimb = dim2[0];
-
-// int dimc = 1;
-// if (ARR_NDIM(a2) == 2)
-// {
-//     dimc = dim2[1];
-// }
-
-// int dims[2];
-// dims[0] = dima;
-// dims[1] = dimc;
-
-// retContent = palloc0(sizeof(float8) * dima * dimc);
-// double *arrayContent1f = (double *)palloc(sizeof(double) * dima * dimb);
-// double *arrayContent2Tf = (double *)palloc(sizeof(double) * dimb * dimc);
-
-// length1 = ArrayGetNItems(ARR_NDIM(a1), ARR_DIMS(a1));
-// Datum *ps1 = (Datum *)ARR_DATA_PTR(a1);
-
-// length2 = ArrayGetNItems(ARR_NDIM(a2), ARR_DIMS(a2));
-// Datum *ps2 = (Datum *)ARR_DATA_PTR(a2);
-
-// Datum *ps;
-// #pragma omp parallel
-// {
-// #pragma omp single nowait
-//     {
-//         // Already prepare result array!
-//         ret = initResult(2, dims, lbs);
-//         ps = (Datum *)ARR_DATA_PTR(ret);
-//     }
-
-// #pragma omp for nowait
-//     for (int pos = 0; pos < length1; pos++)
-//     {
-//         arrayContent1f[pos] = (double)DatumGetFloat8(ps1[pos]);
-//     }
-// #pragma omp for nowait
-//     for (int pos = 0; pos < length2; pos++)
-//     {
-//         arrayContent2Tf[pos] = (double)DatumGetFloat8(ps2[pos]);
-//     }
-// #pragma omp for nowait
-//     for (int pos = 0; pos < dima * dimc; pos++)
-//     {
-//         retContent[pos] = 0.0;
-//     }
-// #pragma omp barrier
-//     int i, j, k;
-// #pragma omp for
-//     for (i = 0; i < dima; i++)
-//     {
-//         for (j = 0; j < dimb; j++)
-//         {
-//             for (k = 0; k < dimc; k++)
-//             {
-//                 retContent[MAT_2D(i, k, dimc)] += arrayContent1f[MAT_2D(i, j, dimb)] * arrayContent2Tf[MAT_2D(j, k, dimc)];
-//             }
-//         }
-//     }
-
-// #pragma omp barrier
-// #pragma omp for
-//     for (int i = 0; i < dima * dimc; i++)
-//     {
-//         ps[i] = Float8GetDatumFast(retContent[i]);
-//     }
-// }
-// // printf("end of matrix_mul_external\n");
-// PG_RETURN_ARRAYTYPE_P(ret);

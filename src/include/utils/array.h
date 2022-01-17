@@ -458,6 +458,8 @@ extern Datum matrix_transpose_internal(Datum MatA);
 // extern Datum mat_avg(PG_FUNCTION_ARGS);
 // extern Datum mat_avg_final(PG_FUNCTION_ARGS);
 extern Datum matrix_add_inplace(Datum MatA, Datum MatB);
+extern Datum matrix_add(PG_FUNCTION_ARGS);
+extern Datum matrix_add_internal(Datum matA, Datum matB);
 extern Datum matrix_elem_mult_external(PG_FUNCTION_ARGS);
 extern Datum matrix_elem_mult(Datum matA, Datum matB);
 extern Datum mat_sub_mm(PG_FUNCTION_ARGS);

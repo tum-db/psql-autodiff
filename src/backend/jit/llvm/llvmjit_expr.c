@@ -3474,7 +3474,6 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, 		/* Builder containing the pr
 								LLVMValueRef derivatives) /* Datum(therefore pointer) array, containing all derivatives */
 {
 	int resultFetchIndex = fetchIndex;
-	//printf("Autodiff L2: Fetchindex: %d\n", fetchIndex);
 	switch (ExecEvalStepOp(state, &(state->steps[fetchIndex])))
 	{
 	case 59: /*EEOP_FIELDSELECT*/ 
@@ -4454,6 +4453,15 @@ llvm_compile_expr_deriv_subtree(LLVMBuilderRef b, 		/* Builder containing the pr
 			resultFetchIndex = stepsAfterSubtree;
 			break;
 		}
+		case 9005: /*matrix float8 binary addition*/
+		{
+			int startingPointY, stepAfterX;
+
+			startingPointY = llvm_compile_expr_deriv_subtree(b, mod, state, fetchIndex - 1, seed, derivatives);
+			stepAfterX = llvm_compile_expr_deriv_subtree(b, mod, state, startingPointY, seed, derivatives);
+			resultFetchIndex = stepAfterX;
+			break;
+		}
 		default:
 		{
 			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg("Derive(L2): current operator not supported, aborting...")));
@@ -5034,6 +5042,20 @@ bool llvm_compile_simple_expr_derive(ExprState *state)
 				break;
 			}
 
+			case 9005:
+			{
+				LLVMTypeRef types[2];
+				LLVMValueRef params[2];
+				numparams = 2;
+				types[0] = TypeDatum;
+				types[1] = TypeDatum;
+				params[0] = registers[registerPointer - 2];
+				params[1] = registers[registerPointer - 1];
+
+				opres = build_EvalCFunc(b, mod, "matrix_add_internal", (LLVMValueRef *)&params, (LLVMTypeRef *)&types, TypeDatum, 2);
+				break;
+			}
+
 			default:
 				ereport(ERROR,
 						(errcode(ERRCODE_INTERNAL_ERROR),
@@ -5131,7 +5153,6 @@ llvm_compile_simple_deriv_subtree(LLVMBuilderRef b,			    /* Builder containing 
 								  int *intermediates_pointer)    /* the stack pointer, as to which values to take from funcVals */
 {
 	int resultFetchIndex = fetchIndex;
-	//printf("Autodiff L3/L4: Fetchindex: %d and Stackpointer: %d\n", fetchIndex, *intermediates_pointer);
 	switch (ExecEvalStepOp(state, &(state->steps[fetchIndex])))
 	{
 	case 59: /*EEOP_FIELDSELECT*/
@@ -5893,7 +5914,6 @@ llvm_compile_simple_deriv_subtree(LLVMBuilderRef b,			    /* Builder containing 
 									  l_as_float8(b, seed),
 									  l_as_float8(b, tmp),
 									  "");
-			// newSeedX = l_float8_const(2);
 
 			stepsAfterSubtree = llvm_compile_simple_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives, funcVals, intermediates_pointer);
 			resultFetchIndex = stepsAfterSubtree;
@@ -6121,6 +6141,18 @@ llvm_compile_simple_deriv_subtree(LLVMBuilderRef b,			    /* Builder containing 
 
 			stepsAfterSubtree = llvm_compile_simple_deriv_subtree(b, mod, state, fetchIndex - 1, newSeedX, derivatives, funcVals, intermediates_pointer);
 			resultFetchIndex = stepsAfterSubtree;
+			break;
+		}
+		case 9005: /* Matrix addition */
+		{
+			int startingPointY, stepAfterX;
+
+			(*intermediates_pointer)--;
+			(*intermediates_pointer)--;
+
+			startingPointY = llvm_compile_simple_deriv_subtree(b, mod, state, fetchIndex - 1, seed, derivatives, funcVals, intermediates_pointer);
+			stepAfterX = llvm_compile_simple_deriv_subtree(b, mod, state, startingPointY, seed, derivatives, funcVals, intermediates_pointer);
+			resultFetchIndex = stepAfterX;
 			break;
 		}
 		default:
